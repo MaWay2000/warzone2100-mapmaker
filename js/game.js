@@ -375,23 +375,28 @@ function getStructurePlacementValidity(def, tileX, tileY, sizeX, sizeY) {
     }
   });
 
-  const parentTypes = getModuleParentTypes(def);
-  if (!parentTypes) {
+  const moduleRule = getModuleParentTypes(def);
+  if (!moduleRule) {
     return overlaps.length ? { valid: false, reason: 'That tile is already occupied.' } : { valid: true };
   }
 
   let foundParent = false;
+  let existingModules = 0;
   for (const item of overlaps) {
     const type = String(item.def?.type || '').toLowerCase();
     const id = String(item.def?.id || '').toLowerCase();
     const isSameModule = id && id === String(def.id || '').toLowerCase();
-    const isMatchingParent = parentTypes.has(type) && footprintsMatch(target, item.footprint);
+    const isMatchingParent = moduleRule.parents.has(type) && footprintsMatch(target, item.footprint);
     foundParent = foundParent || isMatchingParent;
+    if (isSameModule && footprintsMatch(target, item.footprint)) existingModules++;
     if (!isMatchingParent && !isSameModule) {
       return { valid: false, reason: 'Module must be placed on a matching structure.' };
     }
   }
 
+  if (existingModules >= moduleRule.max) {
+    return { valid: false, reason: 'This structure already has the maximum number of modules.' };
+  }
   return foundParent ? { valid: true } : { valid: false, reason: 'Module must be placed on a matching structure.' };
 }
 
@@ -475,9 +480,9 @@ const BASE_STRUCTURE_IDS = new Set([
 ]);
 
 const STRUCTURE_MODULE_PARENT_TYPES = {
-  'factory module': new Set(['factory', 'vtol factory']),
-  'power module': new Set(['power generator']),
-  'research module': new Set(['research'])
+  'factory module': { parents: new Set(['factory', 'vtol factory']), max: 2 },
+  'power module': { parents: new Set(['power generator']), max: 1 },
+  'research module': { parents: new Set(['research']), max: 1 }
 };
 
 const SENSOR_STRUCTURE_IDS = new Set([
