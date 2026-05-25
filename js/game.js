@@ -869,23 +869,42 @@ function makeSaveFilename() {
     .replace(/\.[^.]+$/, '')
     .replace(/[^a-z0-9_-]+/gi, '-')
     .replace(/^-+|-+$/g, '') || 'untitled-map';
-  return base + '.json';
+  return base + '.map';
+}
+
+function buildMapFileBytes() {
+  const bytesPerTile = 3;
+  const out = new Uint8Array(16 + mapW * mapH * bytesPerTile);
+  out[0] = 0x6d; // m
+  out[1] = 0x61; // a
+  out[2] = 0x70; // p
+  out[3] = 0x20; // space
+
+  const dv = new DataView(out.buffer);
+  dv.setUint32(4, 10, true);
+  dv.setUint32(8, mapW, true);
+  dv.setUint32(12, mapH, true);
+
+  let ofs = 16;
+  for (let y = 0; y < mapH; y++) {
+    for (let x = 0; x < mapW; x++) {
+      const tile = Math.max(0, Math.min(0x01ff, mapTiles[y]?.[x] || 0));
+      const rot = (mapRotations[y]?.[x] || 0) & 0x03;
+      const xflip = mapXFlip[y]?.[x] ? 0x8000 : 0;
+      const yflip = mapYFlip[y]?.[x] ? 0x4000 : 0;
+      const triflip = mapTriFlip[y]?.[x] ? 0x0800 : 0;
+      const tilenum = tile | (rot << 12) | xflip | yflip | triflip;
+      const height = Math.max(0, Math.min(255, Math.round(mapHeights[y]?.[x] || 0)));
+      dv.setUint16(ofs, tilenum, true);
+      dv.setUint8(ofs + 2, height);
+      ofs += bytesPerTile;
+    }
+  }
+  return out;
 }
 
 function saveCurrentMap() {
-  const data = {
-    mapW,
-    mapH,
-    tiles: mapTiles,
-    rotations: mapRotations,
-    heights: mapHeights,
-    xflip: mapXFlip,
-    yflip: mapYFlip,
-    triflip: mapTriFlip,
-    tileset: tilesetIndex,
-    savedAt: new Date().toISOString()
-  };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const blob = new Blob([buildMapFileBytes()], { type: 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
