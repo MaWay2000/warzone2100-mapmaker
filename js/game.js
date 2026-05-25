@@ -324,6 +324,94 @@ function removeStructureGroup(group) {
   return true;
 }
 
+function getStructureDefById(id) {
+  const key = String(id || '').toLowerCase();
+  return STRUCTURE_DEFS.find(def => String(def.id || '').toLowerCase() === key) || null;
+}
+
+function getStructureGroupDef(group) {
+  return getStructureDefById(group?.userData?.structureExport?.name);
+}
+
+function getStructureFootprint(group) {
+  const data = group?.userData?.structureExport;
+  if (!data) return null;
+  const sizeX = data.sizeX || 1;
+  const sizeY = data.sizeY || 1;
+  const centerX = group.position.x + (group.userData.centerX || 0);
+  const centerY = group.position.z + (group.userData.centerZ || 0);
+  const x = Math.round(centerX - sizeX / 2);
+  const y = Math.round(centerY - sizeY / 2);
+  return { x, y, sizeX, sizeY };
+}
+
+function footprintsOverlap(a, b) {
+  return a.x < b.x + b.sizeX &&
+    a.x + a.sizeX > b.x &&
+    a.y < b.y + b.sizeY &&
+    a.y + a.sizeY > b.y;
+}
+
+function footprintsMatch(a, b) {
+  return a.x === b.x && a.y === b.y && a.sizeX === b.sizeX && a.sizeY === b.sizeY;
+}
+
+function getModuleParentTypes(def) {
+  const type = String(def?.type || '').toLowerCase();
+  return STRUCTURE_MODULE_PARENT_TYPES[type] || null;
+}
+
+function getStructurePlacementValidity(def, tileX, tileY, sizeX, sizeY) {
+  const target = { x: tileX, y: tileY, sizeX, sizeY };
+  if (tileX < 0 || tileY < 0 || tileX + sizeX > mapW || tileY + sizeY > mapH) {
+    return { valid: false, reason: 'Structure does not fit inside the map.' };
+  }
+
+  const overlaps = [];
+  objectsGroup.children.forEach(group => {
+    const footprint = getStructureFootprint(group);
+    if (footprint && footprintsOverlap(target, footprint)) {
+      overlaps.push({ group, footprint, def: getStructureGroupDef(group) });
+    }
+  });
+
+  const parentTypes = getModuleParentTypes(def);
+  if (!parentTypes) {
+    return overlaps.length ? { valid: false, reason: 'That tile is already occupied.' } : { valid: true };
+  }
+
+  let foundParent = false;
+  for (const item of overlaps) {
+    const type = String(item.def?.type || '').toLowerCase();
+    const id = String(item.def?.id || '').toLowerCase();
+    const isSameModule = id && id === String(def.id || '').toLowerCase();
+    const isMatchingParent = parentTypes.has(type) && footprintsMatch(target, item.footprint);
+    foundParent = foundParent || isMatchingParent;
+    if (!isMatchingParent && !isSameModule) {
+      return { valid: false, reason: 'Module must be placed on a matching structure.' };
+    }
+  }
+
+  return foundParent ? { valid: true } : { valid: false, reason: 'Module must be placed on a matching structure.' };
+}
+
+function tintPlacementPreview(group, valid) {
+  if (valid) return;
+  group.traverse(child => {
+    if (!child.isMesh || !child.material) return;
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    const tinted = materials.map(mat => {
+      const next = mat.clone();
+      if (next.color) next.color.set(0xff3333);
+      if (next.emissive) next.emissive.set(0x661111);
+      next.transparent = true;
+      next.opacity = Math.min(next.opacity || 1, 0.7);
+      return next;
+    });
+    child.material = Array.isArray(child.material) ? tinted : tinted[0];
+  });
+}
+
 function updateStructureModeUI() {
   document.querySelectorAll('[data-structure-mode]').forEach(btn => {
     btn.classList.toggle('active', btn.getAttribute('data-structure-mode') === structureMode);
@@ -385,6 +473,12 @@ const BASE_STRUCTURE_IDS = new Set([
   'a0sat-linkcentre',
   'a0lassatcommand'
 ]);
+
+const STRUCTURE_MODULE_PARENT_TYPES = {
+  'factory module': new Set(['factory', 'vtol factory']),
+  'power module': new Set(['power generator']),
+  'research module': new Set(['research'])
+};
 
 const SENSOR_STRUCTURE_IDS = new Set([
   'sys-sensotower01',
@@ -2041,6 +2135,13 @@ function handleEditClick(event) {
       sizeY = tmp;
     }
     if (tileX + sizeX - 1 >= mapW || tileY + sizeY - 1 >= mapH) {
+      setFileStatus('Cannot place structure: structure does not fit inside the map.');
+      return;
+    }
+    const placement = getStructurePlacementValidity(def, tileX, tileY, sizeX, sizeY);
+    if (!placement.valid) {
+      setFileStatus('Cannot place structure: ' + placement.reason);
+      updateHighlight(event);
       return;
     }
     let minH = Infinity;
@@ -3740,6 +3841,7 @@ function updateHighlight(event) {
     sizeX = sizeY;
     sizeY = tmpXY;
   }
+  const placement = getStructurePlacementValidity(def, tileX, tileY, sizeX, sizeY);
   // Ground plane highlight (green)
   let maxH2 = 0;
   let minH2 = Infinity;
@@ -3774,7 +3876,7 @@ function updateHighlight(event) {
   previewGroup = new THREE.Group();
   const planeGeo = new THREE.PlaneGeometry(sizeX, sizeY);
   planeGeo.rotateX(-Math.PI / 2);
-  const planeMat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
+  const planeMat = new THREE.MeshBasicMaterial({ color: placement.valid ? 0x00ff00 : 0xff3333, transparent: true, opacity: 0.45, side: THREE.DoubleSide });
   const planeMesh = new THREE.Mesh(planeGeo, planeMat);
   planeMesh.position.set(tileX + sizeX / 2, maxH2 + 0.02, tileY + sizeY / 2);
   highlightMesh = planeMesh;
@@ -3806,6 +3908,7 @@ function updateHighlight(event) {
       const pos = getStructurePlacementPosition(group, tileX, tileY, sizeX, sizeY, baseH);
       pos.y += 0.02;
       group.position.copy(pos);
+      tintPlacementPreview(group, placement.valid);
       group.traverse(obj => obj.layers.set(1));
       scene.add(group);
       highlightModelGroup = group;
