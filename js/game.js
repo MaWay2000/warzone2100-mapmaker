@@ -2973,16 +2973,46 @@ async function setTileset(idx) {
   drawMap3D();
 }
 
+function parseStructIni(text) {
+  const sections = [];
+  let current = null;
+  String(text || '').split(/\r?\n/).forEach(line => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith(';') || trimmed.startsWith('#')) return;
+    const section = trimmed.match(/^\[([^\]]+)\]$/);
+    if (section) {
+      current = {};
+      sections.push(current);
+      return;
+    }
+    if (!current) return;
+    const eq = trimmed.indexOf('=');
+    if (eq < 0) return;
+    const key = trimmed.slice(0, eq).trim();
+    const value = trimmed.slice(eq + 1).trim();
+    if (key === 'position' || key === 'rotation') {
+      current[key] = value.split(',').map(part => parseInt(part.trim(), 10) || 0);
+    } else if (key === 'id' || key === 'startpos' || key === 'modules') {
+      const n = parseInt(value, 10);
+      current[key] = Number.isFinite(n) ? n : value;
+    } else {
+      current[key] = value;
+    }
+  });
+  return sections;
+}
+
 async function loadStructuresFromZip(zip) {
-  if (objectsGroup) objectsGroup.clear();
+  clearMapObjects();
   const structName = Object.keys(zip.files).find(fn => fn.toLowerCase().endsWith('struct.json') && !zip.files[fn].dir);
-  currentStructArchivePath = structName || null;
+  const structIniName = Object.keys(zip.files).find(fn => fn.toLowerCase().endsWith('struct.ini') && !zip.files[fn].dir);
+  currentStructArchivePath = structName || (structIniName ? structIniName.replace(/struct\.ini$/i, 'struct.json') : null);
   currentStructJsonStyle = 'array';
-  if (!structName) return;
+  if (!structName && !structIniName) return;
   try {
-    const text = await zip.files[structName].async('string');
-    const data = JSON.parse(text);
-    currentStructJsonStyle = Array.isArray(data) || Array.isArray(data.structures) ? 'array' : 'object';
+    const text = await zip.files[structName || structIniName].async('string');
+    const data = structName ? JSON.parse(text) : parseStructIni(text);
+    currentStructJsonStyle = structName && !(Array.isArray(data) || Array.isArray(data.structures)) ? 'object' : 'array';
     if (!STRUCTURE_DEFS.length) {
       try { await loadStructureDefs(); } catch (e) {}
     }
@@ -3032,7 +3062,7 @@ async function loadStructuresFromZip(zip) {
     });
     await Promise.all(promises);
   } catch (err) {
-    console.error('Failed to load structures from struct.json:', err);
+    console.error('Failed to load structures from struct data:', err);
   }
 }
 
