@@ -2164,6 +2164,8 @@ function handleEditClick(event) {
       if (!scene.children.includes(objectsGroup)) scene.add(objectsGroup);
       drawMap3D();
       pushUndo({ type: 'structure', group });
+      lastMouseEvent = event;
+      updateHighlight(event);
     }).catch(() => {});
   }
 }
