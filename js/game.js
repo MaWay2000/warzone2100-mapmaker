@@ -243,18 +243,24 @@ function pickStructureFromEvent(event) {
 function describeStructureGroup(group) {
   if (!group) return 'Click a structure on the map to view its info.';
   const data = group.userData?.structureExport || {};
-  const def = STRUCTURE_DEFS.find(item => item.id === data.id) || {};
+  const structureId = data.name || data.id;
+  const def = getStructureDefById(structureId) || {};
+  const player = getStructurePlayer(group);
+  const centerX = group.position.x + (group.userData.centerX || 0);
+  const centerY = group.position.z + (group.userData.centerZ || 0);
+  const tileX = Math.max(0, Math.min(mapW - 1, Math.round(centerX - 0.5)));
+  const tileY = Math.max(0, Math.min(mapH - 1, Math.round(centerY - 0.5)));
   const name = def.name || data.name || data.id || 'Unknown structure';
   const lines = [
     'Selected structure',
     'Name: ' + name,
-    'ID: ' + (data.id || def.id || 'unknown')
+    'ID: ' + (structureId || def.id || 'unknown'),
+    'Player: ' + player
   ];
   if (def.categoryName || def.category !== undefined) lines.push('Type: ' + (def.categoryName || STRUCTURE_CATEGORY_NAMES[def.category] || 'unknown'));
-  if (data.player !== undefined) lines.push('Player: ' + data.player);
-  if (data.x !== undefined && data.y !== undefined) lines.push('Tile: ' + data.x + ', ' + data.y);
+  lines.push('Tile: ' + tileX + ', ' + tileY);
   if (data.sizeX && data.sizeY) lines.push('Size: ' + data.sizeX + 'x' + data.sizeY);
-  if (data.rotation !== undefined) lines.push('Rotation: ' + data.rotation);
+  if (data.rot !== undefined) lines.push('Rotation: ' + ((data.rot || 0) * 90) + ' deg');
   return lines.join('\n');
 }
 
@@ -262,6 +268,45 @@ function updateStructureInfo(group, fallback) {
   const info = document.getElementById('structureInfo');
   if (!info) return;
   info.textContent = group ? describeStructureGroup(group) : fallback || '';
+  updateStructurePlayerControls(group);
+}
+
+function getStructurePlayer(group) {
+  const data = group?.userData?.structureExport || {};
+  const source = data.sourceEntry || {};
+  const raw = data.player ?? source.player ?? source.startpos ?? 0;
+  const player = parseInt(raw, 10);
+  return Number.isFinite(player) ? Math.max(0, Math.min(10, player)) : 0;
+}
+
+function setStructurePlayer(group, player) {
+  if (!group?.userData?.structureExport) return;
+  const nextPlayer = Math.max(0, Math.min(10, parseInt(player, 10) || 0));
+  const data = group.userData.structureExport;
+  data.player = nextPlayer;
+  if (data.sourceEntry && typeof data.sourceEntry === 'object') {
+    if (data.sourceEntry.player !== undefined) data.sourceEntry.player = nextPlayer;
+    else data.sourceEntry.startpos = nextPlayer;
+  }
+  updateStructureInfo(group);
+}
+
+function updateStructurePlayerControls(group) {
+  const controls = document.getElementById('structurePlayerControls');
+  const select = document.getElementById('structurePlayerSelect');
+  if (!controls || !select) return;
+  const show = structureMode === 'view' && !!group;
+  controls.style.display = show ? 'flex' : 'none';
+  if (!show) return;
+  if (!select.options.length) {
+    for (let i = 0; i <= 10; i++) {
+      const opt = document.createElement('option');
+      opt.value = String(i);
+      opt.textContent = 'Player ' + i;
+      select.appendChild(opt);
+    }
+  }
+  select.value = String(getStructurePlayer(group));
 }
 
 function clearSelectedStructure() {
@@ -431,6 +476,7 @@ function updateStructureModeUI() {
     else if (structureMode === 'delete') hint.textContent = 'Hover a structure and click mouse1 to remove it from the map.';
     else hint.textContent = 'Click on the map to place the selected structure. Structures snap to the terrain and cannot overlap the map boundary.';
   }
+  updateStructurePlayerControls(structureMode === 'view' ? selectedStructureGroup : null);
   if (structureMode === 'build') {
     clearHoveredStructure();
     clearSelectedStructure();
@@ -1310,6 +1356,7 @@ function markStructureForExport(group, def, rot, sizeX, sizeY, sourceEntry = nul
     rot: rot || 0,
     sizeX: sizeX || def.sizeX || 1,
     sizeY: sizeY || def.sizeY || 1,
+    player: sourceEntry?.player ?? sourceEntry?.startpos ?? 0,
     sourceEntry,
     style
   };
@@ -1335,7 +1382,9 @@ function getStructureExportEntry(group, style, id) {
     base.position = [Math.round(centerX * 128), Math.round(centerY * 128)];
     base.rotation = ((data.rot || 0) % 4) * 16384;
   }
-  if (base.startpos === undefined && base.player === undefined) base.startpos = 0;
+  const player = getStructurePlayer(group);
+  if (base.player !== undefined) base.player = player;
+  else base.startpos = player;
   return base;
 }
 
@@ -1965,6 +2014,12 @@ const initDom = () => {
     btn.addEventListener('click', () => setStructureMode(btn.getAttribute('data-structure-mode')));
   });
   updateStructureModeUI();
+  const structurePlayerSelect = document.getElementById('structurePlayerSelect');
+  if (structurePlayerSelect) {
+    structurePlayerSelect.addEventListener('change', () => {
+      if (selectedStructureGroup) setStructurePlayer(selectedStructureGroup, structurePlayerSelect.value);
+    });
+  }
   if (structureSelect) {
     structureSelect.addEventListener('change', () => {
       const val = parseInt(structureSelect.value, 10);
