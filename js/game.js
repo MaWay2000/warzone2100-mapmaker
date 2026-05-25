@@ -260,7 +260,7 @@ function describeStructureGroup(group) {
   if (def.categoryName || def.category !== undefined) lines.push('Type: ' + (def.categoryName || STRUCTURE_CATEGORY_NAMES[def.category] || 'unknown'));
   lines.push('Tile: ' + tileX + ', ' + tileY);
   if (data.sizeX && data.sizeY) lines.push('Size: ' + data.sizeX + 'x' + data.sizeY);
-  if (data.rot !== undefined) lines.push('Rotation: ' + ((data.rot || 0) * 90) + ' deg');
+  lines.push('Rotation: ' + getStructureRotationDegrees(group) + ' deg');
   return lines.join('\n');
 }
 
@@ -269,6 +269,36 @@ function updateStructureInfo(group, fallback) {
   if (!info) return;
   info.textContent = group ? describeStructureGroup(group) : fallback || '';
   updateStructurePlayerControls(group);
+  updateStructureRotationControls(group);
+}
+
+function normalizeDegrees(value) {
+  const raw = parseFloat(value);
+  if (!Number.isFinite(raw)) return 0;
+  return ((Math.round(raw) % 360) + 360) % 360;
+}
+
+function degreesToWzAngle(deg) {
+  return Math.round(normalizeDegrees(deg) * 65536 / 360);
+}
+
+function getStructureRotationDegrees(group) {
+  const data = group?.userData?.structureExport || {};
+  if (data.rotDeg !== undefined) return normalizeDegrees(data.rotDeg);
+  return normalizeDegrees((data.rot || 0) * 90);
+}
+
+function setStructureRotationDegrees(group, degrees) {
+  if (!group?.userData?.structureExport) return;
+  const deg = normalizeDegrees(degrees);
+  const data = group.userData.structureExport;
+  data.rotDeg = deg;
+  data.rot = Math.round(deg / 90) % 4;
+  group.rotation.y = -deg * Math.PI / 180;
+  group.updateMatrixWorld(true);
+  if (selectedStructureBlinkHelper) selectedStructureBlinkHelper.update();
+  if (hoveredStructureHelper) hoveredStructureHelper.update();
+  updateStructureInfo(group);
 }
 
 function getStructurePlayer(group) {
@@ -307,6 +337,16 @@ function updateStructurePlayerControls(group) {
     }
   }
   select.value = String(getStructurePlayer(group));
+}
+
+function updateStructureRotationControls(group) {
+  const controls = document.getElementById('structureRotationControls');
+  const input = document.getElementById('structureRotationInput');
+  if (!controls || !input) return;
+  const show = structureMode === 'view' && !!group;
+  controls.style.display = show ? 'flex' : 'none';
+  if (!show) return;
+  input.value = String(getStructureRotationDegrees(group));
 }
 
 function clearSelectedStructure() {
@@ -477,6 +517,7 @@ function updateStructureModeUI() {
     else hint.textContent = 'Click on the map to place the selected structure. Structures snap to the terrain and cannot overlap the map boundary.';
   }
   updateStructurePlayerControls(structureMode === 'view' ? selectedStructureGroup : null);
+  updateStructureRotationControls(structureMode === 'view' ? selectedStructureGroup : null);
   if (structureMode === 'build') {
     clearHoveredStructure();
     clearSelectedStructure();
@@ -1354,6 +1395,7 @@ function markStructureForExport(group, def, rot, sizeX, sizeY, sourceEntry = nul
   group.userData.structureExport = {
     name: def.id,
     rot: rot || 0,
+    rotDeg: normalizeDegrees((rot || 0) * 90),
     sizeX: sizeX || def.sizeX || 1,
     sizeY: sizeY || def.sizeY || 1,
     player: sourceEntry?.player ?? sourceEntry?.startpos ?? 0,
@@ -1377,10 +1419,10 @@ function getStructureExportEntry(group, style, id) {
   base.id = base.id ?? id;
   if (style === 'object') {
     base.position = [Math.round(centerX * 128), Math.round(centerY * 128), height];
-    base.rotation = [((data.rot || 0) % 4) * 16384, 0, 0];
+    base.rotation = [degreesToWzAngle(getStructureRotationDegrees(group)), 0, 0];
   } else {
     base.position = [Math.round(centerX * 128), Math.round(centerY * 128)];
-    base.rotation = ((data.rot || 0) % 4) * 16384;
+    base.rotation = degreesToWzAngle(getStructureRotationDegrees(group));
   }
   const player = getStructurePlayer(group);
   if (base.player !== undefined) base.player = player;
@@ -2018,6 +2060,26 @@ const initDom = () => {
   if (structurePlayerSelect) {
     structurePlayerSelect.addEventListener('change', () => {
       if (selectedStructureGroup) setStructurePlayer(selectedStructureGroup, structurePlayerSelect.value);
+    });
+  }
+  const structureRotationInput = document.getElementById('structureRotationInput');
+  const structureViewRotateLeft = document.getElementById('structureViewRotateLeft');
+  const structureViewRotateRight = document.getElementById('structureViewRotateRight');
+  if (structureRotationInput) {
+    const applyStructureRotationInput = () => {
+      if (selectedStructureGroup) setStructureRotationDegrees(selectedStructureGroup, structureRotationInput.value);
+    };
+    structureRotationInput.addEventListener('input', applyStructureRotationInput);
+    structureRotationInput.addEventListener('change', applyStructureRotationInput);
+  }
+  if (structureViewRotateLeft) {
+    structureViewRotateLeft.addEventListener('click', () => {
+      if (selectedStructureGroup) setStructureRotationDegrees(selectedStructureGroup, getStructureRotationDegrees(selectedStructureGroup) + 90);
+    });
+  }
+  if (structureViewRotateRight) {
+    structureViewRotateRight.addEventListener('click', () => {
+      if (selectedStructureGroup) setStructureRotationDegrees(selectedStructureGroup, getStructureRotationDegrees(selectedStructureGroup) - 90);
     });
   }
   if (structureSelect) {
@@ -2912,13 +2974,17 @@ async function loadStructuresFromZip(zip) {
       const def = STRUCTURE_DEFS.find(d => d.id.toLowerCase() === name);
       if (!def) return Promise.resolve();
       let rot = 0;
+      let rotDeg = 0;
       if (Array.isArray(entry.rotation)) {
         const yaw = entry.rotation.find(v => typeof v === 'number' && v !== 0) ?? entry.rotation[0] ?? 0;
-        rot = Math.round(Math.abs(yaw) > 360 ? yaw / 16384 : yaw / 90) % 4;
+        rotDeg = Math.abs(yaw) > 360 ? yaw * 360 / 65536 : yaw;
+        rot = Math.round(rotDeg / 90) % 4;
       } else if (typeof entry.rotation === 'number') {
-        rot = Math.round(Math.abs(entry.rotation) > 360 ? entry.rotation / 16384 : entry.rotation / 90) % 4;
+        rotDeg = Math.abs(entry.rotation) > 360 ? entry.rotation * 360 / 65536 : entry.rotation;
+        rot = Math.round(rotDeg / 90) % 4;
       }
       rot = ((rot % 4) + 4) % 4;
+      rotDeg = normalizeDegrees(rotDeg);
       let sizeX = def.sizeX || 1;
       let sizeY = def.sizeY || 1;
       if (rot % 2 === 1) {
@@ -2941,6 +3007,7 @@ async function loadStructuresFromZip(zip) {
         const pos = getStructurePlacementPosition(group, tileX, tileY, sizeX, sizeY, minH);
         group.position.copy(pos);
         markStructureForExport(group, def, rot, sizeX, sizeY, entry, currentStructJsonStyle);
+        setStructureRotationDegrees(group, rotDeg);
         objectsGroup.add(group);
       }).catch(() => {});
     });
