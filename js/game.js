@@ -885,6 +885,7 @@ window.saveCurrentMap = saveCurrentMap;
 
 function setupFilePanel() {
   const loadBtn = document.getElementById('fileLoadBtn');
+  const serverBtn = document.getElementById('fileServerBtn');
   const saveBtn = document.getElementById('fileSaveBtn');
   const newBtn = document.getElementById('fileNewBtn');
   const input = document.getElementById('wzLoader');
@@ -892,6 +893,12 @@ function setupFilePanel() {
   if (loadBtn && input) {
     loadBtn.addEventListener('click', () => {
       try { input.click(); } catch (e) {}
+    });
+  }
+  if (serverBtn && fileListDiv) {
+    serverBtn.addEventListener('click', () => {
+      fileListDiv.classList.toggle('hidden');
+      setFileStatus(fileListDiv.classList.contains('hidden') ? 'Server map list closed.' : 'Select a server map from the list.');
     });
   }
   if (saveBtn) {
