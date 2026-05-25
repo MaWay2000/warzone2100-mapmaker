@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Folder Explorer</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #151e28; color: #dde; margin: 0; padding: 20px; }
+    h1 { color: #4da3ff; }
+    a { color: #4da3ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    ul { list-style: none; padding: 0; }
+    li { margin-bottom: 5px; }
+    .file-type { font-size: 0.9em; color: #90a4b8; margin-left: 8px; }
+    .btn { margin-left: 8px; padding: 2px 6px; background:#283445; color:#dde; border:1px solid #435066; border-radius:4px; cursor:pointer; }
+    .btn:hover { background:#435066; }
+  </style>
+</head>
+<body>
+  <h1>Folder Explorer</h1>
+  <p>
+    <a href="index.php" target="_blank">Scan Folder (index.php)</a>
+  </p>
+    <p style="font-size:0.9em;color:#90a4b8;">Use Download to save a map or Load Map to preview it in the browser.</p>
+  <h2>File List</h2>
+  <ul id="fileList">
+    <li>Loading files...</li>
+  </ul>
+  <script>
+    async function loadFileList() {
+      const fileListContainer = document.getElementById('fileList');
+      try {
+        const response = await fetch('filelist.txt');
+        if (!response.ok) throw new Error('filelist.txt not found!');
+        const text = await response.text();
+        const files = text.split(/\r?\n/).filter(f => f.trim() !== '');
+        fileListContainer.innerHTML = '';
+        files.forEach(file => {
+          const li = document.createElement('li');
+          const nameSpan = document.createElement('span');
+          nameSpan.textContent = file;
+
+          const downloadLink = document.createElement('a');
+          downloadLink.href = file;
+          downloadLink.textContent = 'Download';
+          downloadLink.className = 'btn';
+
+          const loadBtn = document.createElement('button');
+          loadBtn.textContent = 'Load Map';
+          loadBtn.className = 'btn';
+          loadBtn.addEventListener('click', () => {
+            const url = downloadLink.href;
+            if (window.parent) {
+              window.parent.postMessage({ type: 'map-select', url, name: file }, '*');
+            }
+          });
+
+          const ext = file.split('.').pop();
+          const span = document.createElement('span');
+          span.textContent = ext;
+          span.className = 'file-type';
+
+          li.appendChild(nameSpan);
+          li.appendChild(span);
+          li.appendChild(downloadLink);
+          li.appendChild(loadBtn);
+          fileListContainer.appendChild(li);
+        });
+      } catch (err) {
+        fileListContainer.innerHTML = '<li>Error loading file list.</li>';
+        console.error(err);
+      }
+    }
+      loadFileList();
+    </script>
+  </body>
+</html>
+
+
+</body>
+</html>

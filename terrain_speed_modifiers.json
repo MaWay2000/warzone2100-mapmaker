@@ -1,0 +1,72 @@
+{
+	"wheeled": {
+		"TER_SAND": 1.0,
+		"TER_SANDYBRUSH": 1.0,
+		"TER_BAKEDEARTH": 0.8,
+		"TER_GREENMUD": 0.8,
+		"TER_REDBRUSH": 1.0,
+		"TER_PINKROCK": 0.8,
+		"TER_ROAD": 1.5,
+		"TER_WATER": 0.6,
+		"TER_CLIFFFACE": 0.8,
+		"TER_RUBBLE": 0.6,
+		"TER_SHEETICE": 0.7,
+		"TER_SLUSH": 0.6
+	},
+	"halfTracked": {
+		"TER_SAND": 1.0,
+		"TER_SANDYBRUSH": 0.8,
+		"TER_BAKEDEARTH": 0.8,
+		"TER_GREENMUD": 1.0,
+		"TER_REDBRUSH": 1.0,
+		"TER_PINKROCK": 0.9,
+		"TER_ROAD": 1.35,
+		"TER_WATER": 0.6,
+		"TER_CLIFFFACE": 0.8,
+		"TER_RUBBLE": 0.6,
+		"TER_SHEETICE": 0.5,
+		"TER_SLUSH": 0.8
+	},
+	"legged": {
+		"TER_SAND": 1.0,
+		"TER_SANDYBRUSH": 1.0,
+		"TER_BAKEDEARTH": 1.0,
+		"TER_GREENMUD": 1.0,
+		"TER_REDBRUSH": 1.0,
+		"TER_PINKROCK": 1.0,
+		"TER_ROAD": 1.0,
+		"TER_WATER": 0.6,
+		"TER_CLIFFFACE": 1.0,
+		"TER_RUBBLE": 1.0,
+		"TER_SHEETICE": 0.6,
+		"TER_SLUSH": 0.75
+	},
+	"hover": {
+		"TER_SAND": 1.5,
+		"TER_SANDYBRUSH": 0.8,
+		"TER_BAKEDEARTH": 1.0,
+		"TER_GREENMUD": 1.5,
+		"TER_REDBRUSH": 0.8,
+		"TER_PINKROCK": 0.8,
+		"TER_ROAD": 1.5,
+		"TER_WATER": 1.5,
+		"TER_CLIFFFACE": 0.8,
+		"TER_RUBBLE": 0.8,
+		"TER_SHEETICE": 0.8,
+		"TER_SLUSH": 0.8
+	},
+	"tracked": {
+		"TER_SAND": 1.0,
+		"TER_SANDYBRUSH": 1.0,
+		"TER_BAKEDEARTH": 0.9,
+		"TER_GREENMUD": 0.9,
+		"TER_REDBRUSH": 1.0,
+		"TER_PINKROCK": 1.0,
+		"TER_ROAD": 1.2,
+		"TER_WATER": 0.6,
+		"TER_CLIFFFACE": 0.8,
+		"TER_RUBBLE": 0.8,
+		"TER_SHEETICE": 0.9,
+		"TER_SLUSH": 1.0
+	}
+}

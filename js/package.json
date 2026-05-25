@@ -1,0 +1,16 @@
+{
+  "name": "wzmap",
+  "version": "1.0.0",
+  "description": "Tools and scripts for rendering and editing maps in the browser",
+  "type": "module",
+  "main": "game.js",
+  "scripts": {
+    "test": "echo \"No tests specified\"",
+    "start": "echo \"Open index.html in a browser\""
+  },
+  "author": "MaWay2000",
+  "license": "MIT",
+  "dependencies": {
+    "three": "^0.150.1"
+  }
+}

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Menu</title>
+  <style>
+    :root{
+      --bg:#151e28; --fg:#dde; --muted:#90a4b8; --bar:#151e28; --border:#283445; --accent:#4da3ff;
+    }
+    html, body{
+      margin:0; padding:0; background:var(--bar); color:var(--fg);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    #menuBar{
+      display:flex; align-items:center; gap:6px; padding:4px 8px;
+      border-bottom:1px solid var(--border);
+      width:100%; box-sizing:border-box;
+    }
+    .tab-btn{
+      background:#283445; color:#dde; border:1px solid #435066;
+      padding:2px 8px; cursor:pointer; font-size:0.9rem;
+    }
+    .tab-btn.active{ background:#6CF527; color:#000; }
+  </style>
+</head>
+<body>
+  <div id="menuBar">
+    <button class="tab-btn" data-tab="view">View</button>
+    <button class="tab-btn" data-tab="textures">Tiles</button>
+    <button class="tab-btn" data-tab="height">Height</button>
+    <button class="tab-btn" data-tab="size">Resize</button>
+    <button class="tab-btn" data-tab="objects">Structures</button>
+  </div>
+  <script>
+    function activate(tab){
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-tab') === tab);
+      });
+    }
+    window.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const tab = btn.getAttribute('data-tab');
+          if(window.opener && !window.opener.closed && window.opener.setActiveTab){
+            window.opener.setActiveTab(tab);
+          }
+          activate(tab);
+        });
+      });
+      if(window.opener){
+        window.opener.postMessage({type:'requestActiveTab'}, '*');
+      }
+    });
+    window.addEventListener('message', e => {
+      if(e.data && e.data.type === 'activeTab'){
+        activate(e.data.tab);
+      }
+    });
+  </script>
+</body>
+</html>
