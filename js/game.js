@@ -867,6 +867,8 @@ function getCurrentMapFilename() {
 let currentMapArchive = null;
 let currentMapArchivePath = null;
 let currentMapExportInfo = null;
+let currentStructArchivePath = null;
+let currentStructJsonStyle = 'array';
 
 function getSafeMapBase() {
   const base = getCurrentMapFilename()
@@ -1034,6 +1036,66 @@ async function updateGammaMetadata(zip, base) {
   if (!zip.file('droid.json')) zip.file('droid.json', JSON.stringify({ version: 2, droids: [] }));
 }
 
+function markStructureForExport(group, def, rot, sizeX, sizeY, sourceEntry = null, style = currentStructJsonStyle) {
+  if (!group || !def) return;
+  group.userData.structureExport = {
+    name: def.id,
+    rot: rot || 0,
+    sizeX: sizeX || def.sizeX || 1,
+    sizeY: sizeY || def.sizeY || 1,
+    sourceEntry,
+    style
+  };
+}
+
+function getStructureExportEntry(group, style, id) {
+  const data = group?.userData?.structureExport;
+  if (!data) return null;
+  const def = STRUCTURE_DEFS.find(d => d.id === data.name || d.id.toLowerCase() === String(data.name).toLowerCase());
+  if (!def) return null;
+  const centerX = group.position.x + (group.userData.centerX || 0);
+  const centerY = group.position.z + (group.userData.centerZ || 0);
+  const tileX = Math.max(0, Math.min(mapW - 1, Math.round(centerX - 0.5)));
+  const tileY = Math.max(0, Math.min(mapH - 1, Math.round(centerY - 0.5)));
+  const height = Math.max(0, Math.round((mapHeights[tileY]?.[tileX] || 0) * 2));
+  const base = data.sourceEntry && typeof data.sourceEntry === 'object' ? { ...data.sourceEntry } : {};
+  base.name = def.id;
+  base.id = base.id ?? id;
+  if (style === 'object') {
+    base.position = [Math.round(centerX * 128), Math.round(centerY * 128), height];
+    base.rotation = [((data.rot || 0) % 4) * 16384, 0, 0];
+  } else {
+    base.position = [Math.round(centerX * 128), Math.round(centerY * 128)];
+    base.rotation = ((data.rot || 0) % 4) * 16384;
+  }
+  if (base.startpos === undefined && base.player === undefined) base.startpos = 0;
+  return base;
+}
+
+function buildStructJson() {
+  const style = currentStructJsonStyle || 'array';
+  const entries = [];
+  if (objectsGroup) {
+    objectsGroup.children.forEach((group, idx) => {
+      const entry = getStructureExportEntry(group, style, idx + 1);
+      if (entry) entries.push(entry);
+    });
+  }
+  if (style === 'object') {
+    const out = {};
+    entries.forEach((entry, idx) => {
+      out['structure_' + String(idx + 1).padStart(4, '0')] = entry;
+    });
+    return JSON.stringify(out);
+  }
+  return JSON.stringify({ version: 2, structures: entries });
+}
+
+function updateStructJson(zip) {
+  const structPath = currentStructArchivePath || 'struct.json';
+  zip.file(structPath, buildStructJson());
+}
+
 async function buildWzFileBlob() {
   const zip = currentMapArchive || new JSZip();
   const base = getSafeMapBase();
@@ -1041,6 +1103,7 @@ async function buildWzFileBlob() {
   if (!currentMapArchive || (currentMapExportInfo && currentMapExportInfo.gamma)) {
     await updateGammaMetadata(zip, base);
   }
+  updateStructJson(zip);
   zip.file(mapPath, buildMapFileBytes());
   return await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
 }
@@ -1795,6 +1858,7 @@ function handleEditClick(event) {
     buildStructureGroup(def, selectedStructureRotation, sizeX, sizeY).then(group => {
       const pos = getStructurePlacementPosition(group, tileX, tileY, sizeX, sizeY, minH);
       group.position.copy(pos);
+      markStructureForExport(group, def, selectedStructureRotation, sizeX, sizeY);
       objectsGroup.add(group);
       if (!scene.children.includes(objectsGroup)) scene.add(objectsGroup);
       drawMap3D();
@@ -2469,10 +2533,13 @@ async function setTileset(idx) {
 async function loadStructuresFromZip(zip) {
   if (objectsGroup) objectsGroup.clear();
   const structName = Object.keys(zip.files).find(fn => fn.toLowerCase().endsWith('struct.json') && !zip.files[fn].dir);
+  currentStructArchivePath = structName || null;
+  currentStructJsonStyle = 'array';
   if (!structName) return;
   try {
     const text = await zip.files[structName].async('string');
     const data = JSON.parse(text);
+    currentStructJsonStyle = Array.isArray(data) || Array.isArray(data.structures) ? 'array' : 'object';
     if (!STRUCTURE_DEFS.length) {
       try { await loadStructureDefs(); } catch (e) {}
     }
@@ -2484,9 +2551,12 @@ async function loadStructuresFromZip(zip) {
       if (!def) return Promise.resolve();
       let rot = 0;
       if (Array.isArray(entry.rotation)) {
-        const yaw = entry.rotation[1] ?? entry.rotation[2] ?? entry.rotation[0] ?? 0;
-        rot = Math.round(((yaw % 360) + 360) / 90) % 4;
+        const yaw = entry.rotation.find(v => typeof v === 'number' && v !== 0) ?? entry.rotation[0] ?? 0;
+        rot = Math.round(Math.abs(yaw) > 360 ? yaw / 16384 : yaw / 90) % 4;
+      } else if (typeof entry.rotation === 'number') {
+        rot = Math.round(Math.abs(entry.rotation) > 360 ? entry.rotation / 16384 : entry.rotation / 90) % 4;
       }
+      rot = ((rot % 4) + 4) % 4;
       let sizeX = def.sizeX || 1;
       let sizeY = def.sizeY || 1;
       if (rot % 2 === 1) {
@@ -2508,6 +2578,7 @@ async function loadStructuresFromZip(zip) {
       return buildStructureGroup(def, rot, sizeX, sizeY).then(group => {
         const pos = getStructurePlacementPosition(group, tileX, tileY, sizeX, sizeY, minH);
         group.position.copy(pos);
+        markStructureForExport(group, def, rot, sizeX, sizeY, entry, currentStructJsonStyle);
         objectsGroup.add(group);
       }).catch(() => {});
     });
@@ -2648,6 +2719,8 @@ async function loadMapFile(file) {
   currentMapArchive = null;
   currentMapArchivePath = null;
   currentMapExportInfo = null;
+  currentStructArchivePath = null;
+  currentStructJsonStyle = 'array';
   let found = false;
   let autoTs = 0;
   if (fileExt === 'map' || fileExt === 'json') {
@@ -3179,6 +3252,8 @@ async function newMap() {
   currentMapArchive = null;
   currentMapArchivePath = null;
   currentMapExportInfo = null;
+  currentStructArchivePath = null;
+  currentStructJsonStyle = 'array';
   await setTileset(0);
   const w = DEFAULT_MAP_W;
   const h = DEFAULT_MAP_H;
