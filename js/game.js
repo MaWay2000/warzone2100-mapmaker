@@ -1649,8 +1649,15 @@ const initDom = () => {
   const heightBrushBtn = document.getElementById('heightBrushBtn');
   const heightBrushControls = document.getElementById('heightBrushControls');
   const heightSelectControls = document.getElementById('heightSelectControls');
+  const rightClickActionSelect = document.getElementById('rightClickActionSelect');
   undoBtn = document.getElementById('undoBtn');
   redoBtn = document.getElementById('redoBtn');
+  if (rightClickActionSelect) {
+    rightClickAction = rightClickActionSelect.value || rightClickAction;
+    rightClickActionSelect.addEventListener('change', () => {
+      rightClickAction = rightClickActionSelect.value || 'cancel';
+    });
+  }
   if (undoBtn) undoBtn.addEventListener('click', undo);
   if (redoBtn) redoBtn.addEventListener('click', redo);
   updateUndoRedoButtons();
@@ -2190,11 +2197,22 @@ const initDom = () => {
     // Use pointerdown so tile edits respond immediately on press and
     // work reliably across mouse and touch interactions.
     threeContainer.addEventListener('pointerdown', handleEditClick);
+    threeContainer.addEventListener('contextmenu', handleMapContextMenu);
   }
 };
 
+function handleMapContextMenu(event) {
+  if (rightClickAction === 'browser') return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (rightClickAction === 'cancel') {
+    cancelCurrentMapAction();
+  }
+}
+
 function handleEditClick(event) {
   if (activeTab !== 'textures' && activeTab !== 'height' && activeTab !== 'objects') return;
+  if (event.button !== undefined && event.button !== 0) return;
   if (activeTab === 'objects' && structureMode !== 'build') {
     const group = pickStructureFromEvent(event);
     if (structureMode === 'view') {
@@ -2894,8 +2912,9 @@ function colorizeTileTypeOptions() {
   sel.style.color = (typeof TILE_TYPE_COLORS !== 'undefined' && TILE_TYPE_COLORS[idx]) ? TILE_TYPE_COLORS[idx] : '#888';
 }
   let terrainSpeedModifiers = null;
-  let tileTooltipDiv = null;
-  let selectedTileType = 0;
+let tileTooltipDiv = null;
+let selectedTileType = 0;
+let rightClickAction = 'cancel';
   function parseTileTypes(data) {
   if (!data || data.length < 12) return [];
   const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
@@ -2963,6 +2982,41 @@ function moveTileTooltip(ev) {
 
 function hideTileTooltip() {
   if (tileTooltipDiv) tileTooltipDiv.style.display = 'none';
+}
+
+function clearEditHighlight() {
+  if (highlightMesh && scene) {
+    scene.remove(highlightMesh);
+    if (highlightMesh.geometry) highlightMesh.geometry.dispose();
+    if (highlightMesh.material) highlightMesh.material.dispose();
+    highlightMesh = null;
+  }
+}
+
+function cancelCurrentMapAction() {
+  isDragging = false;
+  hideTileTooltip();
+  if (activeTab === 'textures') {
+    tileSelectStart = null;
+    tileSelectEnd = null;
+    tileSelectionFixed = false;
+    clearEditHighlight();
+    updateTileApplyBtn();
+  } else if (activeTab === 'height') {
+    heightSelectStart = null;
+    heightSelectEnd = null;
+    clearEditHighlight();
+    updateHeightApplyBtn();
+  } else if (activeTab === 'objects') {
+    if (structureMode === 'view') {
+      clearSelectedStructure();
+      updateStructureInfo(null, 'No structure selected.');
+    } else if (structureMode === 'build') {
+      clearStructurePlacementPreview();
+    } else if (structureMode === 'delete') {
+      clearHoveredStructure();
+    }
+  }
 }
 TILESETS.forEach((ts, i) => {
   let opt = document.createElement("option");
@@ -3510,6 +3564,7 @@ function drawMap3D() {
       resetCameraTarget(mapW, mapH, threeContainer);
     });
     threeContainer.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
       if (activeTab === 'textures' && (tileBrushMode || tileSelectionMode)) return;
       isDragging = true;
       lastX = e.clientX;

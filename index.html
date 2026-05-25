@@ -299,6 +299,14 @@
           <li>Step back - <strong>Ctrl+Z</strong></li>
           <li>Step forward - <strong>Ctrl+Y</strong></li>
         </ul>
+        <div style="display:flex; align-items:center; gap:6px; margin-top:10px;">
+          <label for="rightClickActionSelect" style="margin:0;">Right click:</label>
+          <select id="rightClickActionSelect" style="flex:1;">
+            <option value="cancel" selected>Cancel action</option>
+            <option value="disabled">Disabled</option>
+            <option value="browser">Browser menu</option>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -487,7 +495,7 @@
   </div>
 
   <script type="module" src="js/jszip.min.js"></script>
-  <script type="module" src="js/game.js?v=struct-ini-modules"></script>
+  <script type="module" src="js/game.js?v=right-click-menu"></script>
 
 <script type="module">
     // Minimal UI bridge your game.js can use
