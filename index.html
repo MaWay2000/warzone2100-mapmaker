@@ -160,8 +160,9 @@
     }
     #loadingOverlay {
       position: fixed;
-      right: 12px;
-      top: calc(var(--menu-height) + 12px);
+      left: calc(320px + (100vw - 320px) / 2);
+      top: calc(var(--menu-height) + (100vh - var(--menu-height)) / 2);
+      transform: translate(-50%, -50%);
       width: min(360px, calc(100vw - 24px));
       background: rgba(24,32,48,0.95);
       border: 1px solid var(--border);
@@ -170,6 +171,9 @@
       z-index: 120;
       box-sizing: border-box;
       box-shadow: 0 8px 22px rgba(0,0,0,0.25);
+    }
+    body.overlay-open #loadingOverlay {
+      left: 50vw;
     }
     #loadingOverlay.hidden {
       display: none;
@@ -451,7 +455,7 @@
   </div>
 
   <script type="module" src="js/jszip.min.js"></script>
-  <script type="module" src="js/game.js?v=loading-progress"></script>
+  <script type="module" src="js/game.js?v=loading-progress-center"></script>
 
 <script type="module">
     // Minimal UI bridge your game.js can use
