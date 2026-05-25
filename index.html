@@ -428,7 +428,7 @@
       </div>
       <div id="structureInfo" style="display:none; margin:6px 0 0 0; font-size:0.8rem; color:#ccd; line-height:1.35; white-space:pre-line;"></div>
       <div id="structurePlayerControls" style="display:none; align-items:center; gap:6px; margin-top:6px;">
-        <label for="structurePlayerSelect" style="margin:0; font-size:0.8rem;">Player:</label>
+        <label for="structurePlayerSelect" style="margin:0; font-size:0.8rem;">Owner:</label>
         <select id="structurePlayerSelect" style="flex:1; font-size:0.85rem;"></select>
       </div>
       <div id="structureRotationControls" style="display:none; align-items:center; gap:6px; margin-top:6px;">
@@ -438,7 +438,8 @@
         <input type="number" id="structureRotationInput" min="0" max="359" step="1" value="0" style="width:58px; font-size:0.85rem;">
         <span style="font-size:0.8rem; color:#ccd;">deg</span>
       </div>
-      <p id="structureModeHint" style="margin:4px 0 0 0; font-size:0.75rem; color:#8aa;">Click on the map to place the selected structure. Structures snap to the terrain and cannot overlap the map boundary.</p>
+      <button type="button" id="structureViewDeleteBtn" class="action-btn" style="display:none; margin-top:8px;">Delete structure</button>
+      <p id="structureModeHint" style="display:none; margin:4px 0 0 0; font-size:0.75rem; color:#8aa;"></p>
     </div>
 
     <!-- DROIDS TAB -->

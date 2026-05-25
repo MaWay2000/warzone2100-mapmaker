@@ -270,6 +270,7 @@ function updateStructureInfo(group, fallback) {
   info.textContent = group ? describeStructureGroup(group) : fallback || '';
   updateStructurePlayerControls(group);
   updateStructureRotationControls(group);
+  updateStructureViewDeleteButton(group);
 }
 
 function normalizeDegrees(value) {
@@ -347,6 +348,12 @@ function updateStructureRotationControls(group) {
   controls.style.display = show ? 'flex' : 'none';
   if (!show) return;
   input.value = String(getStructureRotationDegrees(group));
+}
+
+function updateStructureViewDeleteButton(group) {
+  const btn = document.getElementById('structureViewDeleteBtn');
+  if (!btn) return;
+  btn.style.display = structureMode === 'view' && !!group ? 'block' : 'none';
 }
 
 function clearSelectedStructure() {
@@ -512,12 +519,14 @@ function updateStructureModeUI() {
   if (buildControls) buildControls.style.display = structureMode === 'build' ? 'block' : 'none';
   if (info) info.style.display = structureMode === 'build' ? 'none' : 'block';
   if (hint) {
-    if (structureMode === 'view') hint.textContent = 'Click a structure on the map to view its info. The selected structure blinks.';
-    else if (structureMode === 'delete') hint.textContent = 'Hover a structure and click mouse1 to remove it from the map.';
-    else hint.textContent = 'Click on the map to place the selected structure. Structures snap to the terrain and cannot overlap the map boundary.';
+    hint.style.display = structureMode === 'view' ? 'none' : 'block';
+    if (structureMode === 'delete') hint.textContent = 'Hover a structure and click mouse1 to remove it from the map.';
+    else if (structureMode === 'build') hint.textContent = 'Click on the map to place the selected structure. Structures snap to the terrain and cannot overlap the map boundary.';
+    else hint.textContent = '';
   }
   updateStructurePlayerControls(structureMode === 'view' ? selectedStructureGroup : null);
   updateStructureRotationControls(structureMode === 'view' ? selectedStructureGroup : null);
+  updateStructureViewDeleteButton(structureMode === 'view' ? selectedStructureGroup : null);
   if (structureMode === 'build') {
     clearHoveredStructure();
     clearSelectedStructure();
@@ -2080,6 +2089,16 @@ const initDom = () => {
   if (structureViewRotateRight) {
     structureViewRotateRight.addEventListener('click', () => {
       if (selectedStructureGroup) setStructureRotationDegrees(selectedStructureGroup, getStructureRotationDegrees(selectedStructureGroup) - 90);
+    });
+  }
+  const structureViewDeleteBtn = document.getElementById('structureViewDeleteBtn');
+  if (structureViewDeleteBtn) {
+    structureViewDeleteBtn.addEventListener('click', () => {
+      const group = selectedStructureGroup;
+      if (group && removeStructureGroup(group)) {
+        pushUndo({ type: 'structure-delete', group });
+        updateStructureInfo(null, 'No structure selected.');
+      }
     });
   }
   if (structureSelect) {
