@@ -866,54 +866,181 @@ function getCurrentMapFilename() {
 
 let currentMapArchive = null;
 let currentMapArchivePath = null;
+let currentMapExportInfo = null;
 
-function makeSaveFilename() {
+function getSafeMapBase() {
   const base = getCurrentMapFilename()
     .replace(/\.[^.]+$/, '')
     .replace(/[^a-z0-9_-]+/gi, '-')
     .replace(/^-+|-+$/g, '') || 'untitled-map';
+  return base;
+}
+
+function makeSaveFilename() {
+  const base = getSafeMapBase();
   return base + '.wz';
 }
 
-function getFallbackWzMapPath() {
-  const base = makeSaveFilename().replace(/\.wz$/i, '') || 'untitled-map';
-  return 'multiplay/maps/' + base + '/game.map';
+function getMapExportInfo(bytes) {
+  if (!bytes || bytes.length < 16 || bytes[0] !== 0x6d || bytes[1] !== 0x61 || bytes[2] !== 0x70 || bytes[3] !== 0x20) {
+    return null;
+  }
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const gamma = bytes[4] === 0x28;
+  const version = gamma ? 40 : dv.getUint32(4, true);
+  const width = dv.getUint32(8, true);
+  const height = dv.getUint32(12, true);
+  const bytesPerTile = gamma || version >= 39 ? 4 : 3;
+  const gridEnd = 16 + width * height * bytesPerTile;
+  return {
+    gamma,
+    version,
+    width,
+    height,
+    bytesPerTile,
+    header: bytes.slice(0, 16),
+    tail: bytes.length > gridEnd ? bytes.slice(gridEnd) : null
+  };
 }
 
-function buildMapFileBytes() {
-  const bytesPerTile = 3;
-  const out = new Uint8Array(16 + mapW * mapH * bytesPerTile);
+function buildTileNumber(x, y) {
+  const tile = Math.max(0, Math.min(0x01ff, mapTiles[y]?.[x] || 0));
+  const rot = (mapRotations[y]?.[x] || 0) & 0x03;
+  const xflip = mapXFlip[y]?.[x] ? 0x8000 : 0;
+  const yflip = mapYFlip[y]?.[x] ? 0x4000 : 0;
+  const triflip = mapTriFlip[y]?.[x] ? 0x0800 : 0;
+  return tile | (rot << 12) | xflip | yflip | triflip;
+}
+
+function getReusableMapTail(info) {
+  if (!info || !info.tail || info.width !== mapW || info.height !== mapH) return null;
+  return info.tail;
+}
+
+function buildClassicMapFileBytes(info = currentMapExportInfo) {
+  const version = info && !info.gamma ? info.version : 10;
+  const bytesPerTile = version >= 39 ? 4 : 3;
+  const tail = getReusableMapTail(info);
+  const out = new Uint8Array(16 + mapW * mapH * bytesPerTile + (tail ? tail.length : 0));
   out[0] = 0x6d; // m
   out[1] = 0x61; // a
   out[2] = 0x70; // p
   out[3] = 0x20; // space
 
   const dv = new DataView(out.buffer);
-  dv.setUint32(4, 10, true);
+  dv.setUint32(4, version, true);
   dv.setUint32(8, mapW, true);
   dv.setUint32(12, mapH, true);
 
   let ofs = 16;
   for (let y = 0; y < mapH; y++) {
     for (let x = 0; x < mapW; x++) {
-      const tile = Math.max(0, Math.min(0x01ff, mapTiles[y]?.[x] || 0));
-      const rot = (mapRotations[y]?.[x] || 0) & 0x03;
-      const xflip = mapXFlip[y]?.[x] ? 0x8000 : 0;
-      const yflip = mapYFlip[y]?.[x] ? 0x4000 : 0;
-      const triflip = mapTriFlip[y]?.[x] ? 0x0800 : 0;
-      const tilenum = tile | (rot << 12) | xflip | yflip | triflip;
-      const height = Math.max(0, Math.min(255, Math.round(mapHeights[y]?.[x] || 0)));
+      const tilenum = buildTileNumber(x, y);
       dv.setUint16(ofs, tilenum, true);
-      dv.setUint8(ofs + 2, height);
+      if (bytesPerTile === 4) {
+        const height = Math.max(0, Math.min(1023, Math.round(mapHeights[y]?.[x] || 0)));
+        dv.setUint16(ofs + 2, height > 255 ? height : height << 1, true);
+      } else {
+        const height = Math.max(0, Math.min(255, Math.round(mapHeights[y]?.[x] || 0)));
+        dv.setUint8(ofs + 2, height);
+      }
       ofs += bytesPerTile;
     }
   }
+  if (tail) out.set(tail, ofs);
   return out;
+}
+
+function buildGammaMapFileBytes(info = currentMapExportInfo) {
+  const tail = getReusableMapTail(info);
+  const out = new Uint8Array(16 + mapW * mapH * 4 + (tail ? tail.length : 0));
+  if (info && info.gamma && info.header) out.set(info.header.slice(0, 16), 0);
+  out[0] = 0x6d; // m
+  out[1] = 0x61; // a
+  out[2] = 0x70; // p
+  out[3] = 0x20; // space
+  out[4] = 0x28; // Gamma map marker
+
+  const dv = new DataView(out.buffer);
+  dv.setUint32(8, mapW, true);
+  dv.setUint32(12, mapH, true);
+
+  let ofs = 16;
+  for (let y = 0; y < mapH; y++) {
+    for (let x = 0; x < mapW; x++) {
+      const tile = Math.max(0, Math.min(0x3fff, mapTiles[y]?.[x] || 0));
+      const rot = (mapRotations[y]?.[x] || 0) & 0x03;
+      const gammaTile = (tile << 2) | rot;
+      const height = Math.max(0, Math.min(1023, Math.round(mapHeights[y]?.[x] || 0)));
+      dv.setUint16(ofs, gammaTile, true);
+      dv.setUint16(ofs + 2, height > 255 ? height : height << 1, true);
+      ofs += 4;
+    }
+  }
+  if (tail) out.set(tail, ofs);
+  return out;
+}
+
+function buildMapFileBytes() {
+  if (currentMapExportInfo && currentMapExportInfo.gamma) {
+    return buildGammaMapFileBytes(currentMapExportInfo);
+  }
+  if (currentMapExportInfo && !currentMapExportInfo.gamma) {
+    return buildClassicMapFileBytes(currentMapExportInfo);
+  }
+  return buildGammaMapFileBytes(null);
+}
+
+function buildDefaultLevelJson(base) {
+  return JSON.stringify({
+    name: base,
+    type: 'skirmish',
+    players: 4,
+    tileset: TILESETS[tilesetIndex]?.name || 'arizona',
+    generator: 'warzone2100-mapmaker'
+  }, null, 2);
+}
+
+function buildDefaultGamJson() {
+  return JSON.stringify({
+    version: 7,
+    gameTime: 0,
+    GameType: 0,
+    ScrollMinX: 0,
+    ScrollMinY: 0,
+    ScrollMaxX: mapW,
+    ScrollMaxY: mapH,
+    levelName: ''
+  }, null, 2);
+}
+
+async function updateGammaMetadata(zip, base) {
+  if (!zip.file('level.json')) zip.file('level.json', buildDefaultLevelJson(base));
+  if (!zip.file('gam.json')) {
+    zip.file('gam.json', buildDefaultGamJson());
+  } else {
+    const text = await zip.file('gam.json').async('string');
+    try {
+      const gam = JSON.parse(text);
+      gam.ScrollMaxX = mapW;
+      gam.ScrollMaxY = mapH;
+      zip.file('gam.json', JSON.stringify(gam, null, 2));
+    } catch (e) {
+      zip.file('gam.json', buildDefaultGamJson());
+    }
+  }
+  if (!zip.file('struct.json')) zip.file('struct.json', JSON.stringify({ version: 2, structures: [] }));
+  if (!zip.file('feature.json')) zip.file('feature.json', JSON.stringify({ version: 2, features: [] }));
+  if (!zip.file('droid.json')) zip.file('droid.json', JSON.stringify({ version: 2, droids: [] }));
 }
 
 async function buildWzFileBlob() {
   const zip = currentMapArchive || new JSZip();
-  const mapPath = currentMapArchivePath || getFallbackWzMapPath();
+  const base = getSafeMapBase();
+  const mapPath = currentMapArchivePath || 'game.map';
+  if (!currentMapArchive || (currentMapExportInfo && currentMapExportInfo.gamma)) {
+    await updateGammaMetadata(zip, base);
+  }
   zip.file(mapPath, buildMapFileBytes());
   return await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
 }
@@ -2520,6 +2647,7 @@ async function loadMapFile(file) {
   let fileExt = file.name.toLowerCase().split('.').pop();
   currentMapArchive = null;
   currentMapArchivePath = null;
+  currentMapExportInfo = null;
   let found = false;
   let autoTs = 0;
   if (fileExt === 'map' || fileExt === 'json') {
@@ -2529,6 +2657,8 @@ async function loadMapFile(file) {
         const json = JSON.parse(await file.text());
         if (typeof json.tileset === 'number') autoTs = json.tileset;
       } catch (e) {}
+    } else {
+      currentMapExportInfo = getMapExportInfo(new Uint8Array(await file.arrayBuffer()));
     }
     setLoadingProgress('Parsing map grid', 35);
     const mapData = await loadMapUnified(file);
@@ -2578,6 +2708,7 @@ async function loadMapFile(file) {
       currentMapArchivePath = mapFileName;
       setLoadingProgress('Extracting map grid', 50);
       let fileData = await zip.files[mapFileName].async("uint8array");
+      currentMapExportInfo = getMapExportInfo(fileData);
       setLoadingProgress('Converting map grid if needed', 56);
       const converted = convertGammaGameMapToClassic(fileData, ttypesMap);
       if (converted) fileData = converted;
@@ -3047,6 +3178,7 @@ function resizeMap(newW, newH) {
 async function newMap() {
   currentMapArchive = null;
   currentMapArchivePath = null;
+  currentMapExportInfo = null;
   await setTileset(0);
   const w = DEFAULT_MAP_W;
   const h = DEFAULT_MAP_H;
