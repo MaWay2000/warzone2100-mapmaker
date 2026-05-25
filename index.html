@@ -143,6 +143,21 @@
       margin-bottom: 6px;
       border-radius: 4px;
     }
+    .file-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .file-actions .action-btn {
+      min-width: 86px;
+    }
+    #fileStatus {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.85rem;
+      line-height: 1.35;
+    }
     #tileTypeSelect {
       min-width: 120px;
     }
@@ -181,6 +196,7 @@
   </head>
   <body class="overlay-open">
   <div id="menuBar">
+    <button type="button" class="tab-btn" data-tab="file">File</button>
     <button type="button" class="tab-btn" data-tab="view">View</button>
     <button type="button" class="tab-btn" data-tab="textures">Tiles</button>
     <button type="button" class="tab-btn" data-tab="height">Height</button>
@@ -195,6 +211,19 @@
 
   <!-- Top editor panel -->
   <div id="editPanel">
+
+    <!-- FILE TAB -->
+    <div id="filePanel" class="panel">
+      <div class="panel-box">
+        <div class="show-hide-title">Map file</div>
+        <div class="file-actions">
+          <button type="button" id="fileLoadBtn" class="action-btn">Load map</button>
+          <button type="button" id="fileSaveBtn" class="action-btn">Save map</button>
+          <button type="button" id="fileNewBtn" class="action-btn">New map</button>
+        </div>
+        <div id="fileStatus">Load .wz, .map, or saved JSON maps.</div>
+      </div>
+    </div>
 
     <!-- VIEW TAB -->
     <div id="viewPanel" class="panel">
@@ -367,7 +396,7 @@
   </div>
 
   <script type="module" src="js/jszip.min.js"></script>
-  <script type="module" src="js/game.js"></script>
+  <script type="module" src="js/game.js?v=file-tab"></script>
 
 <script type="module">
     // Minimal UI bridge your game.js can use

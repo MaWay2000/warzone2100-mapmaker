@@ -815,6 +815,79 @@ function redo() {
       if (heightCancelBtn) heightCancelBtn.disabled = !hasSelection;
     }
   }
+
+function setFileStatus(text) {
+  const status = document.getElementById('fileStatus');
+  if (status) status.textContent = text || '';
+}
+
+function getCurrentMapFilename() {
+  const raw = (mapFilenameSpan && mapFilenameSpan.textContent ? mapFilenameSpan.textContent : 'untitled-map').trim();
+  return raw || 'untitled-map';
+}
+
+function makeSaveFilename() {
+  const base = getCurrentMapFilename()
+    .replace(/\.[^.]+$/, '')
+    .replace(/[^a-z0-9_-]+/gi, '-')
+    .replace(/^-+|-+$/g, '') || 'untitled-map';
+  return base + '.json';
+}
+
+function saveCurrentMap() {
+  const data = {
+    mapW,
+    mapH,
+    tiles: mapTiles,
+    rotations: mapRotations,
+    heights: mapHeights,
+    xflip: mapXFlip,
+    yflip: mapYFlip,
+    triflip: mapTriFlip,
+    tileset: tilesetIndex,
+    savedAt: new Date().toISOString()
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = makeSaveFilename();
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  setFileStatus('Saved ' + a.download);
+}
+window.saveCurrentMap = saveCurrentMap;
+
+function setupFilePanel() {
+  const loadBtn = document.getElementById('fileLoadBtn');
+  const saveBtn = document.getElementById('fileSaveBtn');
+  const newBtn = document.getElementById('fileNewBtn');
+  const input = document.getElementById('wzLoader');
+
+  if (loadBtn && input) {
+    loadBtn.addEventListener('click', () => {
+      try { input.click(); } catch (e) {}
+    });
+  }
+  if (saveBtn) {
+    saveBtn.addEventListener('click', saveCurrentMap);
+  }
+  if (newBtn) {
+    newBtn.addEventListener('click', async () => {
+      await newMap();
+      if (mapFilenameSpan) mapFilenameSpan.textContent = 'Untitled Map';
+      if (typeof window !== 'undefined' && window.UI) {
+        if (typeof window.UI.setMapFilename === 'function') window.UI.setMapFilename('Untitled Map');
+        if (typeof window.UI.showTopBar === 'function') window.UI.showTopBar(true);
+      }
+      hideOverlay();
+      setFileStatus('Created a new blank map.');
+    });
+  }
+}
+
 const initDom = () => {
   loadTerrainSpeedModifiers();
   document.querySelectorAll('.tab-btn[data-tab]').forEach(btn => {
@@ -839,6 +912,7 @@ const initDom = () => {
   });
   updateSelectedInfo();
   setActiveTab(activeTab);
+  setupFilePanel();
 
   const brushInput = document.getElementById('brushSizeInput');
   const brushSlider = document.getElementById('brushSizeSlider');
@@ -2349,7 +2423,13 @@ async function loadMapFile(file) {
   let fileExt = file.name.toLowerCase().split('.').pop();
   let found = false;
   let autoTs = 0;
-  if (fileExt === 'map') {
+  if (fileExt === 'map' || fileExt === 'json') {
+    if (fileExt === 'json') {
+      try {
+        const json = JSON.parse(await file.text());
+        if (typeof json.tileset === 'number') autoTs = json.tileset;
+      } catch (e) {}
+    }
     const mapData = await loadMapUnified(file);
     console.log("Loaded map format:", mapData.format, mapData);
     await setTileset(autoTs);
@@ -2364,6 +2444,7 @@ async function loadMapFile(file) {
     updateHeightUI(mapData.mapVersion >= 39 ? 1023 : 255);
     resetCameraTarget(mapW, mapH, threeContainer);
     infoDiv.innerHTML = '<b>Loaded map grid:</b> <span style="color:yellow">' + file.name + '</span><br>Tileset: ' + TILESETS[tilesetIndex].name + '<br>Size: ' + mapW + 'x' + mapH;
+    setFileStatus('Loaded ' + file.name);
     drawMap3D();
     hideOverlay();
     return;
@@ -2413,6 +2494,7 @@ async function loadMapFile(file) {
         await loadDroidsFromZip(zip);
         resetCameraTarget(mapW, mapH, threeContainer);
         infoDiv.innerHTML = '<b>Loaded map grid:</b> <span style="color:yellow">' + mapFileName + '</span><br>Tileset: ' + TILESETS[tilesetIndex].name + '<br>Size: ' + mapW + 'x' + mapH;
+        setFileStatus('Loaded ' + file.name);
         drawMap3D();
         hideOverlay();
         found = true;
