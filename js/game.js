@@ -1091,6 +1091,16 @@ function buildStructJson() {
   return JSON.stringify({ version: 2, structures: entries });
 }
 
+function savedMapNeedsAdvancedBases() {
+  if (!objectsGroup) return false;
+  return objectsGroup.children.some(group => {
+    const data = group?.userData?.structureExport;
+    if (!data) return false;
+    const def = STRUCTURE_DEFS.find(d => d.id === data.name || d.id.toLowerCase() === String(data.name).toLowerCase());
+    return def && (def.type === 'DEFENSE' || def.type === 'GATE' || def.type === 'WALL' || def.type === 'COMMAND_CONTROL');
+  });
+}
+
 function updateStructJson(zip) {
   const structPath = currentStructArchivePath || 'struct.json';
   zip.file(structPath, buildStructJson());
@@ -1126,7 +1136,8 @@ async function saveCurrentMap() {
     setLoadingProgress('WZ saved', 100);
     setTimeout(() => {
       hideLoadingProgress();
-      setFileStatus('Saved ' + savedName);
+      const baseTip = savedMapNeedsAdvancedBases() ? ' Use Advanced Bases in Warzone to keep defenses/sensors.' : '';
+      setFileStatus('Saved ' + savedName + baseTip);
     }, 600);
   } catch (err) {
     console.error('Failed to save WZ map:', err);
