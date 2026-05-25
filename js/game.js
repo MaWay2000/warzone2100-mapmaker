@@ -864,12 +864,20 @@ function getCurrentMapFilename() {
   return raw || 'untitled-map';
 }
 
+let currentMapArchive = null;
+let currentMapArchivePath = null;
+
 function makeSaveFilename() {
   const base = getCurrentMapFilename()
     .replace(/\.[^.]+$/, '')
     .replace(/[^a-z0-9_-]+/gi, '-')
     .replace(/^-+|-+$/g, '') || 'untitled-map';
-  return base + '.map';
+  return base + '.wz';
+}
+
+function getFallbackWzMapPath() {
+  const base = makeSaveFilename().replace(/\.wz$/i, '') || 'untitled-map';
+  return 'multiplay/maps/' + base + '/game.map';
 }
 
 function buildMapFileBytes() {
@@ -903,17 +911,38 @@ function buildMapFileBytes() {
   return out;
 }
 
-function saveCurrentMap() {
-  const blob = new Blob([buildMapFileBytes()], { type: 'application/octet-stream' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = makeSaveFilename();
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-  setFileStatus('Saved ' + a.download);
+async function buildWzFileBlob() {
+  const zip = currentMapArchive || new JSZip();
+  const mapPath = currentMapArchivePath || getFallbackWzMapPath();
+  zip.file(mapPath, buildMapFileBytes());
+  return await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+}
+
+async function saveCurrentMap() {
+  try {
+    setFileStatus('Packing .wz map...');
+    setLoadingProgress('Packing WZ archive', 15);
+    const blob = await buildWzFileBlob();
+    setLoadingProgress('Preparing download', 95);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = makeSaveFilename();
+    const savedName = a.download;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    setLoadingProgress('WZ saved', 100);
+    setTimeout(() => {
+      hideLoadingProgress();
+      setFileStatus('Saved ' + savedName);
+    }, 600);
+  } catch (err) {
+    console.error('Failed to save WZ map:', err);
+    setFileStatus('Failed to save .wz map.');
+    setLoadingProgress('Failed to save WZ archive', 100);
+  }
 }
 window.saveCurrentMap = saveCurrentMap;
 
@@ -2489,6 +2518,8 @@ async function loadMapFile(file) {
     } catch(e) {}
   } catch(e) {}
   let fileExt = file.name.toLowerCase().split('.').pop();
+  currentMapArchive = null;
+  currentMapArchivePath = null;
   let found = false;
   let autoTs = 0;
   if (fileExt === 'map' || fileExt === 'json') {
@@ -2543,6 +2574,8 @@ async function loadMapFile(file) {
       .filter(fname => fname.toLowerCase().endsWith(".map") && !zip.files[fname].dir);
     let mapFileName = allMapNames.find(f => f.toLowerCase().endsWith("game.map")) || allMapNames[0];
     if (mapFileName) {
+      currentMapArchive = zip;
+      currentMapArchivePath = mapFileName;
       setLoadingProgress('Extracting map grid', 50);
       let fileData = await zip.files[mapFileName].async("uint8array");
       setLoadingProgress('Converting map grid if needed', 56);
@@ -3012,6 +3045,8 @@ function resizeMap(newW, newH) {
 }
 
 async function newMap() {
+  currentMapArchive = null;
+  currentMapArchivePath = null;
   await setTileset(0);
   const w = DEFAULT_MAP_W;
   const h = DEFAULT_MAP_H;
