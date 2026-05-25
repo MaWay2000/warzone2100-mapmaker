@@ -155,6 +155,29 @@ let previewRenderer = null;
 let previewMesh = null;
 let previewLoadToken = 0;
 let highlightLoadToken = 0;
+
+function disposeObject3D(obj) {
+  obj.traverse(child => {
+    if (!child.isMesh) return;
+    if (child.geometry && typeof child.geometry.dispose === 'function') child.geometry.dispose();
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    materials.forEach(mat => {
+      if (!mat) return;
+      if (mat.map && typeof mat.map.dispose === 'function') mat.map.dispose();
+      if (typeof mat.dispose === 'function') mat.dispose();
+    });
+  });
+}
+
+function clearMapObjects() {
+  if (!objectsGroup) return;
+  for (let i = objectsGroup.children.length - 1; i >= 0; i--) {
+    const obj = objectsGroup.children[i];
+    disposeObject3D(obj);
+    objectsGroup.remove(obj);
+  }
+}
+
 const STRUCTURE_CATEGORY_NAMES = [
   'Base buildings',
   'Sensors',
@@ -2907,6 +2930,7 @@ async function newMap() {
   const xflip = Array(h).fill().map(() => Array(w).fill(false));
   const yflip = Array(h).fill().map(() => Array(w).fill(false));
   const triflip = Array(h).fill().map(() => Array(w).fill(false));
+  clearMapObjects();
   setMapState(w, h, tiles, rotations, heights, xflip, yflip, triflip);
   undoStack.length = 0;
   redoStack.length = 0;
