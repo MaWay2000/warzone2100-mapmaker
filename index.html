@@ -254,6 +254,7 @@
     <button type="button" class="tab-btn" data-tab="height">Height</button>
     <button type="button" class="tab-btn" data-tab="size">Resize</button>
     <button type="button" class="tab-btn" data-tab="objects">Structures</button>
+    <button type="button" class="tab-btn" data-tab="droids">Droids</button>
     <button type="button" id="undoBtn" class="tab-btn" disabled title="Undo (Ctrl+Z)">↺</button>
     <button type="button" id="redoBtn" class="tab-btn" disabled title="Redo (Ctrl+Y)">↻</button>
   </div>
@@ -405,8 +406,8 @@
     <!-- OBJECTS TAB -->
     <div id="objectsPanel" class="panel" style="display:none;">
       <div style="display:flex; gap:4px; margin-bottom:6px;">
-        <button type="button" id="structureModeView" class="action-btn" data-structure-mode="view">View</button>
-        <button type="button" id="structureModeBuild" class="action-btn active" data-structure-mode="build">Build</button>
+        <button type="button" id="structureModeView" class="action-btn active" data-structure-mode="view">View</button>
+        <button type="button" id="structureModeBuild" class="action-btn" data-structure-mode="build">Build</button>
         <button type="button" id="structureModeDelete" class="action-btn" data-structure-mode="delete">Delete</button>
       </div>
       <div id="structureBuildControls">
@@ -427,6 +428,17 @@
       </div>
       <div id="structureInfo" style="display:none; margin:6px 0 0 0; font-size:0.8rem; color:#ccd; line-height:1.35; white-space:pre-line;"></div>
       <p id="structureModeHint" style="margin:4px 0 0 0; font-size:0.75rem; color:#8aa;">Click on the map to place the selected structure. Structures snap to the terrain and cannot overlap the map boundary.</p>
+    </div>
+
+    <!-- DROIDS TAB -->
+    <div id="droidsPanel" class="panel" style="display:none;">
+      <div style="display:flex; gap:4px; margin-bottom:6px;">
+        <button type="button" class="action-btn active">View</button>
+        <button type="button" class="action-btn" disabled>Build</button>
+        <button type="button" class="action-btn" disabled>Delete</button>
+      </div>
+      <p style="margin:4px 0 0 0; font-size:0.85rem; color:#ccd;">Droid editing tools will be added here.</p>
+      <p style="margin:6px 0 0 0; font-size:0.75rem; color:#8aa;">Loaded map droids are visible on the map. Build and delete controls are not enabled yet.</p>
     </div>
   </div>
 
