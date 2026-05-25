@@ -43,6 +43,10 @@ const loadingOverlay = document.getElementById('loadingOverlay');
 const loadingDetail = document.getElementById('loadingDetail');
 const loadingBarInner = document.getElementById('loadingBarInner');
 const loadingPercent = document.getElementById('loadingPercent');
+const saveResultOverlay = document.getElementById('saveResultOverlay');
+const saveResultFilename = document.getElementById('saveResultFilename');
+const saveResultLocation = document.getElementById('saveResultLocation');
+const saveResultCloseBtn = document.getElementById('saveResultCloseBtn');
 const overlayMsg = document.getElementById('overlayMsg');
 const overlayText = document.getElementById('overlayText');
 function setLoadingProgress(detail, percent) {
@@ -55,6 +59,20 @@ function setLoadingProgress(detail, percent) {
 }
 function hideLoadingProgress() {
   if (loadingOverlay) loadingOverlay.classList.add('hidden');
+}
+function showSaveResult(savedName, mode, extraNote = '') {
+  if (!saveResultOverlay) return;
+  if (saveResultFilename) saveResultFilename.textContent = savedName || 'Map file';
+  if (saveResultLocation) {
+    const locationText = mode === 'picker'
+      ? 'Saved to the folder you selected in the Save As window.'
+      : 'Saved by the browser to your Downloads folder. Chrome does not let websites read the exact folder path.';
+    saveResultLocation.textContent = extraNote ? locationText + ' ' + extraNote : locationText;
+  }
+  saveResultOverlay.classList.remove('hidden');
+}
+function hideSaveResult() {
+  if (saveResultOverlay) saveResultOverlay.classList.add('hidden');
 }
 function setOverlayText(msg){
   if (overlayText) { overlayText.textContent = msg; }
@@ -1517,25 +1535,56 @@ async function buildWzFileBlob() {
 }
 
 async function saveCurrentMap() {
+  let fileHandle = null;
+  const savedName = makeSaveFilename();
   try {
+    hideSaveResult();
+    if (typeof window !== 'undefined' && typeof window.showSaveFilePicker === 'function') {
+      try {
+        setFileStatus('Choose save location...');
+        fileHandle = await window.showSaveFilePicker({
+          suggestedName: savedName,
+          types: [{
+            description: 'Warzone 2100 map archive',
+            accept: { 'application/zip': ['.wz'] }
+          }]
+        });
+      } catch (err) {
+        if (err && err.name === 'AbortError') {
+          setFileStatus('Save cancelled.');
+          return;
+        }
+        console.warn('Save picker unavailable, using browser download:', err);
+        fileHandle = null;
+      }
+    }
     setFileStatus('Packing .wz map...');
     setLoadingProgress('Packing WZ archive', 15);
     const blob = await buildWzFileBlob();
-    setLoadingProgress('Preparing download', 95);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = makeSaveFilename();
-    const savedName = a.download;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    let saveMode = 'download';
+    if (fileHandle) {
+      setLoadingProgress('Writing WZ file', 95);
+      const writable = await fileHandle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      saveMode = 'picker';
+    } else {
+      setLoadingProgress('Preparing download', 95);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = savedName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
     setLoadingProgress('WZ saved', 100);
     setTimeout(() => {
       hideLoadingProgress();
       const baseTip = savedMapNeedsAdvancedBases() ? ' Use Advanced Bases in Warzone to keep defenses/sensors.' : '';
       setFileStatus('Saved ' + savedName + baseTip);
+      showSaveResult(savedName, saveMode, baseTip);
     }, 600);
   } catch (err) {
     console.error('Failed to save WZ map:', err);
@@ -1585,6 +1634,9 @@ function setupFilePanel() {
 
 const initDom = () => {
   loadTerrainSpeedModifiers();
+  if (saveResultCloseBtn) {
+    saveResultCloseBtn.addEventListener('click', hideSaveResult);
+  }
   document.querySelectorAll('.tab-btn[data-tab]').forEach(btn => {
     btn.addEventListener('click', () => {
       const tab = btn.getAttribute('data-tab');
