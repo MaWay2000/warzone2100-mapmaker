@@ -283,6 +283,21 @@ function degreesToWzAngle(deg) {
   return Math.round(normalizeDegrees(deg) * 65536 / 360);
 }
 
+function parseStructureRotation(entry) {
+  let rot = 0;
+  let rotDeg = 0;
+  if (Array.isArray(entry.rotation)) {
+    const yaw = entry.rotation.find(v => typeof v === 'number' && v !== 0) ?? entry.rotation[0] ?? 0;
+    rotDeg = Math.abs(yaw) > 360 ? yaw * 360 / 65536 : yaw;
+    rot = Math.round(rotDeg / 90) % 4;
+  } else if (typeof entry.rotation === 'number') {
+    rotDeg = Math.abs(entry.rotation) > 360 ? entry.rotation * 360 / 65536 : entry.rotation;
+    rot = Math.round(rotDeg / 90) % 4;
+  }
+  rot = ((rot % 4) + 4) % 4;
+  return { rot, rotDeg: normalizeDegrees(rotDeg) };
+}
+
 function getStructureRotationDegrees(group) {
   const data = group?.userData?.structureExport || {};
   if (data.rotDeg !== undefined) return normalizeDegrees(data.rotDeg);
@@ -451,6 +466,14 @@ function footprintsMatch(a, b) {
 function getModuleParentTypes(def) {
   const type = String(def?.type || '').toLowerCase();
   return STRUCTURE_MODULE_PARENT_TYPES[type] || null;
+}
+
+function getModuleDefForParent(def) {
+  const type = String(def?.type || '').toLowerCase();
+  if (type === 'power generator') return getStructureDefById('A0PowMod1');
+  if (type === 'research') return getStructureDefById('A0ResearchModule1');
+  if (type === 'factory' || type === 'vtol factory') return getStructureDefById('A0FacMod1');
+  return null;
 }
 
 function getStructurePlacementValidity(def, tileX, tileY, sizeX, sizeY) {
@@ -3002,6 +3025,16 @@ function parseStructIni(text) {
   return sections;
 }
 
+async function addLoadedStructure(def, entry, rot, rotDeg, tileX, tileY, sizeX, sizeY, minH) {
+  const group = await buildStructureGroup(def, rot, sizeX, sizeY);
+  const pos = getStructurePlacementPosition(group, tileX, tileY, sizeX, sizeY, minH);
+  group.position.copy(pos);
+  markStructureForExport(group, def, rot, sizeX, sizeY, entry, currentStructJsonStyle);
+  setStructureRotationDegrees(group, rotDeg);
+  objectsGroup.add(group);
+  return group;
+}
+
 async function loadStructuresFromZip(zip) {
   clearMapObjects();
   const structName = Object.keys(zip.files).find(fn => fn.toLowerCase().endsWith('struct.json') && !zip.files[fn].dir);
@@ -3022,18 +3055,7 @@ async function loadStructuresFromZip(zip) {
       if (!name) return Promise.resolve();
       const def = STRUCTURE_DEFS.find(d => d.id.toLowerCase() === name);
       if (!def) return Promise.resolve();
-      let rot = 0;
-      let rotDeg = 0;
-      if (Array.isArray(entry.rotation)) {
-        const yaw = entry.rotation.find(v => typeof v === 'number' && v !== 0) ?? entry.rotation[0] ?? 0;
-        rotDeg = Math.abs(yaw) > 360 ? yaw * 360 / 65536 : yaw;
-        rot = Math.round(rotDeg / 90) % 4;
-      } else if (typeof entry.rotation === 'number') {
-        rotDeg = Math.abs(entry.rotation) > 360 ? entry.rotation * 360 / 65536 : entry.rotation;
-        rot = Math.round(rotDeg / 90) % 4;
-      }
-      rot = ((rot % 4) + 4) % 4;
-      rotDeg = normalizeDegrees(rotDeg);
+      const { rot, rotDeg } = parseStructureRotation(entry);
       let sizeX = def.sizeX || 1;
       let sizeY = def.sizeY || 1;
       if (rot % 2 === 1) {
@@ -3052,13 +3074,19 @@ async function loadStructuresFromZip(zip) {
           if (h < minH) minH = h;
         }
       }
-      return buildStructureGroup(def, rot, sizeX, sizeY).then(group => {
-        const pos = getStructurePlacementPosition(group, tileX, tileY, sizeX, sizeY, minH);
-        group.position.copy(pos);
-        markStructureForExport(group, def, rot, sizeX, sizeY, entry, currentStructJsonStyle);
-        setStructureRotationDegrees(group, rotDeg);
-        objectsGroup.add(group);
-      }).catch(() => {});
+      return addLoadedStructure(def, entry, rot, rotDeg, tileX, tileY, sizeX, sizeY, minH)
+        .then(() => {
+          const moduleCount = Math.max(0, parseInt(entry.modules, 10) || 0);
+          const moduleDef = getModuleDefForParent(def);
+          if (!moduleDef || !moduleCount) return Promise.resolve();
+          const moduleEntryBase = { ...entry, name: moduleDef.id };
+          const modulePromises = [];
+          for (let i = 0; i < moduleCount; i++) {
+            modulePromises.push(addLoadedStructure(moduleDef, { ...moduleEntryBase, id: String(entry.id || '') + '_module_' + (i + 1) }, rot, rotDeg, tileX, tileY, sizeX, sizeY, minH));
+          }
+          return Promise.all(modulePromises);
+        })
+        .catch(() => {});
     });
     await Promise.all(promises);
   } catch (err) {
