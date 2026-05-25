@@ -203,6 +203,12 @@ function clearMapObjects() {
 
 function clearStructurePlacementPreview() {
   highlightLoadToken++;
+  highlightCachedKey = null;
+  highlightLoadingKey = null;
+  highlightCachedId = null;
+  highlightCachedRot = null;
+  highlightLoadingId = null;
+  highlightLoadingRot = null;
   if (highlightMesh) {
     if (scene) scene.remove(highlightMesh);
     if (highlightMesh.geometry) highlightMesh.geometry.dispose();
@@ -1060,9 +1066,11 @@ raycaster.layers.set(0);
 const mouse = new THREE.Vector2();
 let highlightCachedId = null;
 let highlightCachedRot = null;
+let highlightCachedKey = null;
 let highlightModelGroup = null;
 let highlightLoadingId = null;
 let highlightLoadingRot = null;
+let highlightLoadingKey = null;
 // References to key DOM elements so helper functions can update them
 let tileApplyBtn;
 let tileCancelBtn;
@@ -4031,64 +4039,14 @@ function updateHighlight(event) {
   raycaster.setFromCamera(mouse, camera);
   const intersects = raycaster.intersectObjects(scene.children, true);
   if (!intersects.length) {
-    if (highlightMesh) {
-      scene.remove(highlightMesh);
-      highlightMesh = null;
-    }
-    if (previewGroup) {
-      previewGroup.traverse(child => {
-        if (child.isMesh) {
-          if (child.material && child.material.map) child.material.map.dispose();
-          if (child.material) child.material.dispose();
-          if (child.geometry) child.geometry.dispose();
-        }
-      });
-      scene.remove(previewGroup);
-      previewGroup = null;
-    }
-    if (highlightModelGroup) {
-      scene.remove(highlightModelGroup);
-      highlightModelGroup.traverse(child => {
-        if (child.isMesh) {
-          if (child.material && child.material.map) child.material.map.dispose();
-          if (child.material) child.material.dispose();
-          if (child.geometry) child.geometry.dispose();
-        }
-      });
-      highlightModelGroup = null;
-    }
+    clearStructurePlacementPreview();
     return;
   }
   const point = intersects[0].point;
   const tileX = Math.floor(point.x);
   const tileY = Math.floor(point.z);
   if (tileX < 0 || tileX >= mapW || tileY < 0 || tileY >= mapH) {
-    if (highlightMesh) {
-      scene.remove(highlightMesh);
-      highlightMesh = null;
-    }
-    if (previewGroup) {
-      previewGroup.traverse(child => {
-        if (child.isMesh) {
-          if (child.material && child.material.map) child.material.map.dispose();
-          if (child.material) child.material.dispose();
-          if (child.geometry) child.geometry.dispose();
-        }
-      });
-      scene.remove(previewGroup);
-      previewGroup = null;
-    }
-    if (highlightModelGroup) {
-      scene.remove(highlightModelGroup);
-      highlightModelGroup.traverse(child => {
-        if (child.isMesh) {
-          if (child.material && child.material.map) child.material.map.dispose();
-          if (child.material) child.material.dispose();
-          if (child.geometry) child.geometry.dispose();
-        }
-      });
-      highlightModelGroup = null;
-    }
+    clearStructurePlacementPreview();
     return;
   }
   if (selectedStructureIndex < 0 || !STRUCTURE_DEFS || !STRUCTURE_DEFS.length) {
@@ -4103,6 +4061,17 @@ function updateHighlight(event) {
     sizeY = tmpXY;
   }
   const placement = getStructurePlacementValidity(def, tileX, tileY, sizeX, sizeY);
+  const previewKey = [
+    def.id,
+    selectedStructureRotation,
+    tileX,
+    tileY,
+    sizeX,
+    sizeY,
+    placement.valid ? 'ok' : 'blocked'
+  ].join('|');
+  if (previewKey === highlightCachedKey && previewGroup && highlightModelGroup) return;
+  if (previewKey === highlightLoadingKey && previewGroup) return;
   // Ground plane highlight (green)
   let maxH2 = 0;
   let minH2 = Infinity;
@@ -4134,6 +4103,7 @@ function updateHighlight(event) {
     scene.remove(previewGroup);
     previewGroup = null;
   }
+  highlightCachedKey = null;
   previewGroup = new THREE.Group();
   const planeGeo = new THREE.PlaneGeometry(sizeX, sizeY);
   planeGeo.rotateX(-Math.PI / 2);
@@ -4156,6 +4126,7 @@ function updateHighlight(event) {
     });
     highlightModelGroup = null;
   }
+  highlightLoadingKey = previewKey;
   const thisToken = ++highlightLoadToken;
   // Build unified preview using the same function as final placement
   buildStructureGroup(def, selectedStructureRotation, sizeX, sizeY, null, 0.55)
@@ -4175,8 +4146,11 @@ function updateHighlight(event) {
       highlightModelGroup = group;
       highlightCachedId = def.id;
       highlightCachedRot = selectedStructureRotation;
+      highlightCachedKey = previewKey;
+      highlightLoadingKey = null;
     })
     .catch(err => {
+      if (highlightLoadingKey === previewKey) highlightLoadingKey = null;
       console.warn("Unified preview failed:", err);
     });
 }
