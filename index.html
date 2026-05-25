@@ -404,6 +404,12 @@
 
     <!-- OBJECTS TAB -->
     <div id="objectsPanel" class="panel" style="display:none;">
+      <div style="display:flex; gap:4px; margin-bottom:6px;">
+        <button type="button" id="structureModeView" class="action-btn" data-structure-mode="view">View</button>
+        <button type="button" id="structureModeBuild" class="action-btn active" data-structure-mode="build">Build</button>
+        <button type="button" id="structureModeDelete" class="action-btn" data-structure-mode="delete">Delete</button>
+      </div>
+      <div id="structureBuildControls">
       <div style="margin-bottom:4px;">
         <label for="structureFilter" style="margin:0; display:block;">Type:</label>
         <select id="structureFilter" style="width:100%; font-size:0.9rem;"></select>
@@ -418,7 +424,9 @@
         <span id="structureNameLabel" style="flex:1; font-size:0.85rem; color:#ccd; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
       </div>
       <div id="structurePreview" style="width:100%; height:160px; background:#1a2735; border:1px solid #435066; border-radius:4px; margin-bottom:4px;"></div>
-      <p style="margin:4px 0 0 0; font-size:0.75rem; color:#8aa;">Click on the map to place the selected structure. Structures snap to the terrain and cannot overlap the map boundary.</p>
+      </div>
+      <div id="structureInfo" style="display:none; margin:6px 0 0 0; font-size:0.8rem; color:#ccd; line-height:1.35; white-space:pre-line;"></div>
+      <p id="structureModeHint" style="margin:4px 0 0 0; font-size:0.75rem; color:#8aa;">Click on the map to place the selected structure. Structures snap to the terrain and cannot overlap the map boundary.</p>
     </div>
   </div>
 

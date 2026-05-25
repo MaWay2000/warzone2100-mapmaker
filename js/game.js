@@ -164,6 +164,12 @@ let STRUCTURE_DEFS = [];
 let selectedStructureIndex = -1;
 let objectsGroup = new THREE.Group();
 let selectedStructureRotation = 0;
+let structureMode = 'build';
+let selectedStructureGroup = null;
+let selectedStructureBlinkHelper = null;
+let selectedStructureBlinkTimer = null;
+let hoveredStructureGroup = null;
+let hoveredStructureHelper = null;
 let previewScene = null;
 let previewCamera = null;
 let previewRenderer = null;
@@ -186,11 +192,166 @@ function disposeObject3D(obj) {
 
 function clearMapObjects() {
   if (!objectsGroup) return;
+  clearSelectedStructure();
+  clearHoveredStructure();
   for (let i = objectsGroup.children.length - 1; i >= 0; i--) {
     const obj = objectsGroup.children[i];
     disposeObject3D(obj);
     objectsGroup.remove(obj);
   }
+}
+
+function clearStructurePlacementPreview() {
+  highlightLoadToken++;
+  if (highlightMesh) {
+    if (scene) scene.remove(highlightMesh);
+    if (highlightMesh.geometry) highlightMesh.geometry.dispose();
+    if (highlightMesh.material) highlightMesh.material.dispose();
+    highlightMesh = null;
+  }
+  if (previewGroup) {
+    disposeObject3D(previewGroup);
+    if (scene) scene.remove(previewGroup);
+    previewGroup = null;
+  }
+  if (highlightModelGroup) {
+    disposeObject3D(highlightModelGroup);
+    if (scene) scene.remove(highlightModelGroup);
+    highlightModelGroup = null;
+  }
+}
+
+function getStructureRootFromObject(obj) {
+  let cur = obj;
+  while (cur && cur !== objectsGroup) {
+    if (cur.parent === objectsGroup) return cur;
+    cur = cur.parent;
+  }
+  return null;
+}
+
+function pickStructureFromEvent(event) {
+  if (!event || !threeContainer || !camera || !objectsGroup) return null;
+  const rect = threeContainer.getBoundingClientRect();
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(objectsGroup.children, true);
+  return hits.length ? getStructureRootFromObject(hits[0].object) : null;
+}
+
+function describeStructureGroup(group) {
+  if (!group) return 'Click a structure on the map to view its info.';
+  const data = group.userData?.structureExport || {};
+  const def = STRUCTURE_DEFS.find(item => item.id === data.id) || {};
+  const name = def.name || data.name || data.id || 'Unknown structure';
+  const lines = [
+    'Selected structure',
+    'Name: ' + name,
+    'ID: ' + (data.id || def.id || 'unknown')
+  ];
+  if (def.categoryName || def.category !== undefined) lines.push('Type: ' + (def.categoryName || STRUCTURE_CATEGORY_NAMES[def.category] || 'unknown'));
+  if (data.player !== undefined) lines.push('Player: ' + data.player);
+  if (data.x !== undefined && data.y !== undefined) lines.push('Tile: ' + data.x + ', ' + data.y);
+  if (data.sizeX && data.sizeY) lines.push('Size: ' + data.sizeX + 'x' + data.sizeY);
+  if (data.rotation !== undefined) lines.push('Rotation: ' + data.rotation);
+  return lines.join('\n');
+}
+
+function updateStructureInfo(group, fallback) {
+  const info = document.getElementById('structureInfo');
+  if (!info) return;
+  info.textContent = group ? describeStructureGroup(group) : fallback || '';
+}
+
+function clearSelectedStructure() {
+  selectedStructureGroup = null;
+  if (selectedStructureBlinkTimer) {
+    clearInterval(selectedStructureBlinkTimer);
+    selectedStructureBlinkTimer = null;
+  }
+  if (selectedStructureBlinkHelper) {
+    if (scene) scene.remove(selectedStructureBlinkHelper);
+    selectedStructureBlinkHelper = null;
+  }
+}
+
+function selectStructureGroup(group) {
+  clearSelectedStructure();
+  if (!group) {
+    updateStructureInfo(null, 'No structure selected.');
+    return;
+  }
+  selectedStructureGroup = group;
+  selectedStructureBlinkHelper = new THREE.BoxHelper(group, 0x6cf527);
+  selectedStructureBlinkHelper.layers.set(1);
+  if (scene) scene.add(selectedStructureBlinkHelper);
+  selectedStructureBlinkTimer = setInterval(() => {
+    if (!selectedStructureBlinkHelper) return;
+    selectedStructureBlinkHelper.visible = !selectedStructureBlinkHelper.visible;
+    selectedStructureBlinkHelper.update();
+  }, 350);
+  updateStructureInfo(group);
+}
+
+function clearHoveredStructure() {
+  hoveredStructureGroup = null;
+  if (hoveredStructureHelper) {
+    if (scene) scene.remove(hoveredStructureHelper);
+    hoveredStructureHelper = null;
+  }
+}
+
+function setHoveredStructure(group) {
+  if (hoveredStructureGroup === group) {
+    if (hoveredStructureHelper) hoveredStructureHelper.update();
+    return;
+  }
+  clearHoveredStructure();
+  if (!group) return;
+  hoveredStructureGroup = group;
+  hoveredStructureHelper = new THREE.BoxHelper(group, structureMode === 'delete' ? 0xff5555 : 0x66aaff);
+  hoveredStructureHelper.layers.set(1);
+  if (scene) scene.add(hoveredStructureHelper);
+}
+
+function removeStructureGroup(group) {
+  if (!group || !objectsGroup.children.includes(group)) return false;
+  if (selectedStructureGroup === group) clearSelectedStructure();
+  if (hoveredStructureGroup === group) clearHoveredStructure();
+  objectsGroup.remove(group);
+  drawMap3D();
+  return true;
+}
+
+function updateStructureModeUI() {
+  document.querySelectorAll('[data-structure-mode]').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-structure-mode') === structureMode);
+  });
+  const buildControls = document.getElementById('structureBuildControls');
+  const info = document.getElementById('structureInfo');
+  const hint = document.getElementById('structureModeHint');
+  if (buildControls) buildControls.style.display = structureMode === 'build' ? 'block' : 'none';
+  if (info) info.style.display = structureMode === 'build' ? 'none' : 'block';
+  if (hint) {
+    if (structureMode === 'view') hint.textContent = 'Click a structure on the map to view its info. The selected structure blinks.';
+    else if (structureMode === 'delete') hint.textContent = 'Hover a structure and click mouse1 to remove it from the map.';
+    else hint.textContent = 'Click on the map to place the selected structure. Structures snap to the terrain and cannot overlap the map boundary.';
+  }
+  if (structureMode === 'build') {
+    clearHoveredStructure();
+    clearSelectedStructure();
+  } else {
+    clearStructurePlacementPreview();
+    updateStructureInfo(selectedStructureGroup, structureMode === 'delete' ? 'Hover and click a structure to delete it.' : 'Click a structure on the map to view its info.');
+  }
+}
+
+function setStructureMode(mode) {
+  if (!['view', 'build', 'delete'].includes(mode)) return;
+  structureMode = mode;
+  updateStructureModeUI();
+  if (lastMouseEvent) updateHighlight(lastMouseEvent);
 }
 
 const STRUCTURE_CATEGORY_NAMES = [
@@ -794,12 +955,19 @@ function applyAction(action, mode) {
     setMapState(state.w, state.h, state.tiles, state.rotations, state.heights, state.xflip, state.yflip, state.triflip);
   } else if (action.type === 'structure') {
     if (mode === 'undo') {
-      objectsGroup.remove(action.group);
-      drawMap3D();
+      removeStructureGroup(action.group);
     } else {
       objectsGroup.add(action.group);
       if (!scene.children.includes(objectsGroup)) scene.add(objectsGroup);
       drawMap3D();
+    }
+  } else if (action.type === 'structure-delete') {
+    if (mode === 'undo') {
+      objectsGroup.add(action.group);
+      if (!scene.children.includes(objectsGroup)) scene.add(objectsGroup);
+      drawMap3D();
+    } else {
+      removeStructureGroup(action.group);
     }
   }
 }
@@ -1689,10 +1857,15 @@ const initDom = () => {
       scene.remove(previewGroup);
       previewGroup = null;
     }
+    clearHoveredStructure();
   });
   setTileset(tilesetIndex);
   const structureSelect = document.getElementById('structureSelect');
   const structureFilter = document.getElementById('structureFilter');
+  document.querySelectorAll('[data-structure-mode]').forEach(btn => {
+    btn.addEventListener('click', () => setStructureMode(btn.getAttribute('data-structure-mode')));
+  });
+  updateStructureModeUI();
   if (structureSelect) {
     structureSelect.addEventListener('change', () => {
       const val = parseInt(structureSelect.value, 10);
@@ -1764,6 +1937,17 @@ const initDom = () => {
 
 function handleEditClick(event) {
   if (activeTab !== 'textures' && activeTab !== 'height' && activeTab !== 'objects') return;
+  if (activeTab === 'objects' && structureMode !== 'build') {
+    const group = pickStructureFromEvent(event);
+    if (structureMode === 'view') {
+      selectStructureGroup(group);
+    } else if (structureMode === 'delete' && group) {
+      if (removeStructureGroup(group)) {
+        pushUndo({ type: 'structure-delete', group });
+      }
+    }
+    return;
+  }
   const rect = threeContainer.getBoundingClientRect();
   mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -2180,7 +2364,11 @@ function setActiveTab(tab) {
   const panel = document.getElementById(tab + 'Panel');
   if (panel) panel.style.display = 'block';
   if (tab === 'objects') {
+    updateStructureModeUI();
     updateStructurePreview();
+  } else {
+    clearHoveredStructure();
+    clearSelectedStructure();
   }
 }
 window.setActiveTab = setActiveTab;
@@ -3461,6 +3649,12 @@ function updateHighlight(event) {
   }
   if (!threeContainer || !scene) return;
   if (activeTab !== 'objects') return;
+  if (structureMode !== 'build') {
+    clearStructurePlacementPreview();
+    setHoveredStructure(event ? pickStructureFromEvent(event) : null);
+    return;
+  }
+  clearHoveredStructure();
   // Read mouse
   let clientX, clientY;
   if (event) {
