@@ -896,7 +896,10 @@ function setupFilePanel() {
     });
   }
   if (serverBtn && fileListDiv) {
-    serverBtn.addEventListener('click', () => {
+    serverBtn.addEventListener('click', async () => {
+      if (!fileListDiv.children.length && typeof window.loadServerList === 'function') {
+        await window.loadServerList();
+      }
       fileListDiv.classList.toggle('hidden');
       setFileStatus(fileListDiv.classList.contains('hidden') ? 'Server map list closed.' : 'Select a server map from the list.');
     });
@@ -2435,7 +2438,7 @@ async function loadDroidsFromZip(zip) {
 }
 
 async function loadMapFile(file) {
-  fileListDiv.innerHTML = "";
+  fileListDiv.classList.add('hidden');
   infoDiv.textContent = "";
   if (mapFilenameSpan) mapFilenameSpan.textContent = file.name;
   try {

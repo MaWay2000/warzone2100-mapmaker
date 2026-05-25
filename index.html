@@ -397,7 +397,7 @@
   </div>
 
   <script type="module" src="js/jszip.min.js"></script>
-  <script type="module" src="js/game.js?v=file-tab-server"></script>
+  <script type="module" src="js/game.js?v=file-tab-server-list"></script>
 
 <script type="module">
     // Minimal UI bridge your game.js can use
@@ -484,6 +484,7 @@
           console.error(err);
         }
       }
+      window.loadServerList = loadServerList;
       loadServerList();
 
       const params = new URLSearchParams(location.search);
