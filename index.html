@@ -158,6 +158,54 @@
       font-size: 0.85rem;
       line-height: 1.35;
     }
+    #loadingOverlay {
+      position: fixed;
+      right: 12px;
+      top: calc(var(--menu-height) + 12px);
+      width: min(360px, calc(100vw - 24px));
+      background: rgba(24,32,48,0.95);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 10px 12px;
+      z-index: 120;
+      box-sizing: border-box;
+      box-shadow: 0 8px 22px rgba(0,0,0,0.25);
+    }
+    #loadingOverlay.hidden {
+      display: none;
+    }
+    #loadingTitle {
+      font-size: 1rem;
+      color: var(--fg);
+      margin-bottom: 4px;
+    }
+    #loadingDetail {
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-bottom: 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #loadingBarOuter {
+      height: 8px;
+      background: #111923;
+      border: 1px solid #435066;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    #loadingBarInner {
+      width: 0%;
+      height: 100%;
+      background: #6CF527;
+      transition: width 0.15s ease;
+    }
+    #loadingPercent {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 0.8rem;
+      text-align: right;
+    }
     #tileTypeSelect {
       min-width: 120px;
     }
@@ -371,6 +419,12 @@
   </div>
 
   <div id="threeContainer"></div>
+  <div id="loadingOverlay" class="hidden">
+    <div id="loadingTitle">Map loading</div>
+    <div id="loadingDetail">Preparing map...</div>
+    <div id="loadingBarOuter"><div id="loadingBarInner"></div></div>
+    <div id="loadingPercent">0%</div>
+  </div>
   <div id="fileList" class="hidden"></div>
   <div id="info"></div>
   <div id="compass">
@@ -397,7 +451,7 @@
   </div>
 
   <script type="module" src="js/jszip.min.js"></script>
-  <script type="module" src="js/game.js?v=file-tab-server-list"></script>
+  <script type="module" src="js/game.js?v=loading-progress"></script>
 
 <script type="module">
     // Minimal UI bridge your game.js can use

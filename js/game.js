@@ -39,8 +39,23 @@ const compassNeedle = document.getElementById('compassNeedle');
 const mapFilenameSpan = document.getElementById('mapFilename');
 const uiBar = document.getElementById('uiBar');
 const threeContainer = document.getElementById('threeContainer');
+const loadingOverlay = document.getElementById('loadingOverlay');
+const loadingDetail = document.getElementById('loadingDetail');
+const loadingBarInner = document.getElementById('loadingBarInner');
+const loadingPercent = document.getElementById('loadingPercent');
 const overlayMsg = document.getElementById('overlayMsg');
 const overlayText = document.getElementById('overlayText');
+function setLoadingProgress(detail, percent) {
+  const pct = Math.max(0, Math.min(100, Math.round(percent || 0)));
+  if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+  if (loadingDetail) loadingDetail.textContent = detail || 'Loading...';
+  if (loadingBarInner) loadingBarInner.style.width = pct + '%';
+  if (loadingPercent) loadingPercent.textContent = pct + '%';
+  setFileStatus((detail || 'Loading...') + ' ' + pct + '%');
+}
+function hideLoadingProgress() {
+  if (loadingOverlay) loadingOverlay.classList.add('hidden');
+}
 function setOverlayText(msg){
   if (overlayText) { overlayText.textContent = msg; }
   else if (overlayMsg) { overlayMsg.textContent = msg; }
@@ -2441,6 +2456,7 @@ async function loadMapFile(file) {
   fileListDiv.classList.add('hidden');
   infoDiv.textContent = "";
   if (mapFilenameSpan) mapFilenameSpan.textContent = file.name;
+  setLoadingProgress('Preparing ' + file.name, 2);
   try {
     const inputEl = document.getElementById('wzLoader');
     if (inputEl) inputEl.style.display = 'none';
@@ -2457,15 +2473,19 @@ async function loadMapFile(file) {
   let found = false;
   let autoTs = 0;
   if (fileExt === 'map' || fileExt === 'json') {
+    setLoadingProgress('Reading map file', 15);
     if (fileExt === 'json') {
       try {
         const json = JSON.parse(await file.text());
         if (typeof json.tileset === 'number') autoTs = json.tileset;
       } catch (e) {}
     }
+    setLoadingProgress('Parsing map grid', 35);
     const mapData = await loadMapUnified(file);
     console.log("Loaded map format:", mapData.format, mapData);
+    setLoadingProgress('Loading tileset textures', 55);
     await setTileset(autoTs);
+    setLoadingProgress('Applying map data', 70);
     mapW = mapData.mapW;
     mapH = mapData.mapH;
     mapTiles = mapData.mapTiles;
@@ -2478,32 +2498,44 @@ async function loadMapFile(file) {
     resetCameraTarget(mapW, mapH, threeContainer);
     infoDiv.innerHTML = '<b>Loaded map grid:</b> <span style="color:yellow">' + file.name + '</span><br>Tileset: ' + TILESETS[tilesetIndex].name + '<br>Size: ' + mapW + 'x' + mapH;
     setFileStatus('Loaded ' + file.name);
+    setLoadingProgress('Drawing map', 95);
     drawMap3D();
+    setLoadingProgress('Map loaded', 100);
+    setTimeout(hideLoadingProgress, 600);
     hideOverlay();
     return;
   }
   try {
+    setLoadingProgress('Reading archive file', 20);
     const buf = await file.arrayBuffer();
+    setLoadingProgress('Opening map archive', 30);
     const zip = await JSZip.loadAsync(buf);
     let names = Object.keys(zip.files).map(n => n.replace(/\\/g, '/'));
     const ttypesName = names.find(n => n.toLowerCase().endsWith('ttypes.ttp'));
     let ttypesMap = null;
     if (ttypesName) {
+      setLoadingProgress('Loading tile type metadata', 38);
       const ttypesData = await zip.files[ttypesName].async('uint8array');
       ttypesMap = parseTTypes(ttypesData);
     }
+    setLoadingProgress('Detecting tileset', 44);
     autoTs = await getTilesetIndexFromTtp(zip, TTP_TILESET_MAP);
     let allMapNames = Object.keys(zip.files)
       .filter(fname => fname.toLowerCase().endsWith(".map") && !zip.files[fname].dir);
     let mapFileName = allMapNames.find(f => f.toLowerCase().endsWith("game.map")) || allMapNames[0];
     if (mapFileName) {
+      setLoadingProgress('Extracting map grid', 50);
       let fileData = await zip.files[mapFileName].async("uint8array");
+      setLoadingProgress('Converting map grid if needed', 56);
       const converted = convertGammaGameMapToClassic(fileData, ttypesMap);
       if (converted) fileData = converted;
+      setLoadingProgress('Loading tileset textures', 62);
       await setTileset(autoTs);
+      setLoadingProgress('Parsing map grid', 68);
       const result = await loadMapUnified(new File([fileData], mapFileName));
       console.log("Loaded map format:", result.format, result);
       if (result) {
+        setLoadingProgress('Applying map data', 74);
         mapW = result.mapW;
         mapH = result.mapH;
         mapTiles = result.mapTiles;
@@ -2515,6 +2547,7 @@ async function loadMapFile(file) {
         updateHeightUI(result.mapVersion >= 39 ? 1023 : 255);
         const ttpName = Object.keys(zip.files).find(fn => fn.toLowerCase().endsWith('.ttp') && !zip.files[fn].dir);
         if (ttpName) {
+          setLoadingProgress('Loading tile type metadata', 80);
           const ttpData = await zip.files[ttpName].async('uint8array');
           tileTypesById = parseTileTypes(ttpData);
           if (tileTypesById.length < tileImages.length) {
@@ -2523,12 +2556,17 @@ async function loadMapFile(file) {
         } else {
           tileTypesById = new Array(tileImages.length).fill(0);
         }
+        setLoadingProgress('Loading structures', 86);
         await loadStructuresFromZip(zip);
+        setLoadingProgress('Loading droids', 91);
         await loadDroidsFromZip(zip);
         resetCameraTarget(mapW, mapH, threeContainer);
         infoDiv.innerHTML = '<b>Loaded map grid:</b> <span style="color:yellow">' + mapFileName + '</span><br>Tileset: ' + TILESETS[tilesetIndex].name + '<br>Size: ' + mapW + 'x' + mapH;
         setFileStatus('Loaded ' + file.name);
+        setLoadingProgress('Drawing map', 96);
         drawMap3D();
+        setLoadingProgress('Map loaded', 100);
+        setTimeout(hideLoadingProgress, 600);
         hideOverlay();
         found = true;
         const typeSelect = document.getElementById('tileTypeSelect');
@@ -2563,11 +2601,13 @@ async function loadMapFile(file) {
     }
     if (!found) {
       infoDiv.innerHTML = '<b style=\"color:red\">Failed to decode any map grid in this archive!</b>';
+      setLoadingProgress('Failed to decode map grid', 100);
       showOverlay("Failed to load map. Please select another file.");
       resetCameraTarget(mapW, mapH, threeContainer);
     }
   } catch (err) {
     infoDiv.innerHTML = '<b style=\"color:red\">Failed to open archive!</b>';
+    setLoadingProgress('Failed to open map archive', 100);
     showOverlay("Failed to open file. Please select another map.");
     resetCameraTarget(mapW, mapH, threeContainer);
   }
@@ -2579,15 +2619,38 @@ document.getElementById('wzLoader').addEventListener('change', async evt => {
   await loadMapFile(file);
 });
 
+async function fetchBlobWithProgress(url, label, options = undefined) {
+  setLoadingProgress('Downloading ' + label, 3);
+  const resp = await fetch(url, options);
+  if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  const total = parseInt(resp.headers.get('content-length') || '0', 10);
+  if (!resp.body || !total) {
+    const blob = await resp.blob();
+    setLoadingProgress('Downloaded ' + label, 20);
+    return blob;
+  }
+  const reader = resp.body.getReader();
+  const chunks = [];
+  let received = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    setLoadingProgress('Downloading ' + label, 3 + (received / total) * 17);
+  }
+  setLoadingProgress('Downloaded ' + label, 20);
+  return new Blob(chunks);
+}
+
 async function loadServerMap(filename) {
   try {
-    const resp = await fetch('maps/' + filename);
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const blob = await resp.blob();
+    const blob = await fetchBlobWithProgress('maps/' + filename, filename);
     const file = new File([blob], filename);
     await loadMapFile(file);
   } catch (err) {
     infoDiv.innerHTML = '<b style="color:red">Failed to load server map!</b>';
+    setLoadingProgress('Failed to download server map', 100);
     console.error(err);
   }
 }
@@ -2613,14 +2676,13 @@ function resolveMapUrl(url) {
 async function loadRemoteMap(url) {
   try {
     url = resolveMapUrl(url);
-    const resp = await fetch(url, { mode: 'cors' });
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const blob = await resp.blob();
     const name = url.split('/').pop() || 'remote.wz';
+    const blob = await fetchBlobWithProgress(url, name, { mode: 'cors' });
     const file = new File([blob], name);
     await loadMapFile(file);
   } catch (err) {
     infoDiv.innerHTML = '<b style="color:red">Failed to load remote map!</b>';
+    setLoadingProgress('Failed to download remote map', 100);
     console.error(err);
   }
 }
