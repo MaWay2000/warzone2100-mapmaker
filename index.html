@@ -350,6 +350,7 @@
     <button type="button" class="tab-btn" data-tab="size">Resize</button>
     <button type="button" class="tab-btn" data-tab="objects">Structures</button>
     <button type="button" class="tab-btn" data-tab="droids">Droids</button>
+    <button type="button" class="tab-btn" data-tab="todo">Todo</button>
     <button type="button" id="undoBtn" class="tab-btn" disabled title="Undo (Ctrl+Z)">↺</button>
     <button type="button" id="redoBtn" class="tab-btn" disabled title="Redo (Ctrl+Y)">↻</button>
   </div>
@@ -595,6 +596,33 @@
       <button type="button" id="droidViewDeleteBtn" class="action-btn" style="display:none; margin-top:8px;">Delete droid</button>
       <p id="droidModeHint" style="margin:6px 0 0 0; font-size:0.75rem; color:#8aa;"></p>
     </div>
+
+    <!-- TODO TAB -->
+    <div id="todoPanel" class="panel" style="display:none;">
+      <div class="panel-box" style="font-size:0.82rem; line-height:1.35;">
+        <div class="show-hide-title">Todo / risks</div>
+        <div style="font-weight:bold; margin-top:4px;">Droid preview</div>
+        <ul style="margin:4px 0 8px 18px; padding:0;">
+          <li>Droid parts are stacked at origin; body, propulsion, mount, and weapon connector offsets are not applied yet.</li>
+          <li>Scavenger MG/cannon/jeep/buggy/trike weapons have valid game IDs but no visible model file in local JSON.</li>
+          <li>Scavenger legs and wheels are gameplay propulsion IDs without standalone preview PIE models.</li>
+          <li>Some weapon previews may show only mount, only weapon, or body-only depending on available component models.</li>
+          <li>Preview is not proof of in-game export; exported IDs must still be tested in Warzone.</li>
+        </ul>
+        <div style="font-weight:bold;">Export validation</div>
+        <ul style="margin:4px 0 8px 18px; padding:0;">
+          <li>Validate each player has Command Center and at least one builder truck.</li>
+          <li>Check scavenger droids in exported .wz against Warzone, not only browser preview.</li>
+          <li>Confirm .gam metadata matches player count and map type after droid/scavenger edits.</li>
+        </ul>
+        <div style="font-weight:bold;">Next fixes</div>
+        <ul style="margin:4px 0 0 18px; padding:0;">
+          <li>Build connector-aware droid preview placement.</li>
+          <li>Add warnings when selected parts have no visible preview model.</li>
+          <li>Mark tested presets as OK after Warzone loads them correctly.</li>
+        </ul>
+      </div>
+    </div>
   </div>
 
   <div id="threeContainer"></div>
@@ -647,7 +675,7 @@
   </div>
 
   <script type="module" src="js/jszip.min.js"></script>
-  <script type="module" src="js/game.js?v=droid-scavengers"></script>
+  <script type="module" src="js/game.js?v=todo-risks"></script>
 
 <script type="module">
     // Minimal UI bridge your game.js can use
