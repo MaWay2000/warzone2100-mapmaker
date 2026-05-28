@@ -1286,6 +1286,14 @@ let currentMapArchivePath = null;
 let currentMapExportInfo = null;
 let currentStructArchivePath = null;
 let currentStructJsonStyle = 'array';
+let currentDroidArchivePath = null;
+let currentFeatureArchivePath = null;
+let currentGamArchivePath = null;
+let currentLevelArchivePath = null;
+let currentDroidEntries = [];
+let currentFeatureEntries = [];
+let currentGamJson = null;
+let currentLevelJson = null;
 
 function getSafeMapBase() {
   const base = getCurrentMapFilename()
@@ -1431,6 +1439,44 @@ function buildDefaultGamJson() {
     ScrollMaxY: mapH,
     levelName: ''
   }, null, 2);
+}
+
+async function readArchiveJson(zip, suffix) {
+  const name = Object.keys(zip.files).find(fn => fn.toLowerCase().endsWith(suffix) && !zip.files[fn].dir);
+  if (!name) return { name: null, data: null };
+  try {
+    return { name, data: JSON.parse(await zip.files[name].async('string')) };
+  } catch (e) {
+    return { name, data: null };
+  }
+}
+
+async function loadArchiveMetadata(zip) {
+  const gam = await readArchiveJson(zip, 'gam.json');
+  const level = await readArchiveJson(zip, 'level.json');
+  const feature = await readArchiveJson(zip, 'feature.json');
+  const droid = await readArchiveJson(zip, 'droid.json');
+  currentGamArchivePath = gam.name;
+  currentLevelArchivePath = level.name;
+  currentFeatureArchivePath = feature.name;
+  currentDroidArchivePath = droid.name;
+  currentGamJson = gam.data;
+  currentLevelJson = level.data;
+  const features = feature.data ? (Array.isArray(feature.data) ? feature.data : Array.isArray(feature.data.features) ? feature.data.features : Object.values(feature.data)) : [];
+  const droids = droid.data ? (Array.isArray(droid.data) ? droid.data : Array.isArray(droid.data.droids) ? droid.data.droids : Object.values(droid.data)) : [];
+  currentFeatureEntries = features.filter(entry => entry && typeof entry === 'object');
+  currentDroidEntries = droids.filter(entry => entry && typeof entry === 'object');
+}
+
+function resetLoadedMetadata() {
+  currentDroidArchivePath = null;
+  currentFeatureArchivePath = null;
+  currentGamArchivePath = null;
+  currentLevelArchivePath = null;
+  currentDroidEntries = [];
+  currentFeatureEntries = [];
+  currentGamJson = null;
+  currentLevelJson = null;
 }
 
 async function updateGammaMetadata(zip, base) {
@@ -1580,10 +1626,122 @@ function validateStructureOverlaps(groups, errors) {
   });
 }
 
+function getObjectEntryTile(entry) {
+  const pos = entry?.position || entry?.pos;
+  if (!Array.isArray(pos) || pos.length < 2) return null;
+  return {
+    x: Math.floor((parseFloat(pos[0]) || 0) / 128),
+    y: Math.floor((parseFloat(pos[1]) || 0) / 128)
+  };
+}
+
+function getObjectEntryPlayer(entry) {
+  const raw = entry?.player ?? entry?.startpos;
+  const player = parseInt(raw, 10);
+  return Number.isFinite(player) ? player : 0;
+}
+
+function isOilFeature(entry) {
+  const text = [
+    entry?.name,
+    entry?.id,
+    entry?.type,
+    entry?.stattype
+  ].filter(Boolean).join(' ').toLowerCase();
+  return text.includes('oil') || text.includes('resource');
+}
+
+function isBuilderDroid(entry) {
+  const template = String(entry?.template || '').toLowerCase();
+  if (template.includes('construction')) return true;
+  const weapons = Array.isArray(entry?.weapons) ? entry.weapons : [entry?.weapon];
+  return weapons.some(weapon => String(weapon || '').toLowerCase() === 'droid_construct');
+}
+
+function getDeclaredPlayerCount(activePlayers) {
+  const raw = currentLevelJson?.players ?? currentGamJson?.players ?? currentGamJson?.Players;
+  const declared = parseInt(raw, 10);
+  if (Number.isFinite(declared) && declared > 0) return Math.min(Math.max(declared, 1), 11);
+  if (activePlayers.size) return Math.min(Math.max(Math.max(...activePlayers) + 1, 1), 11);
+  return 0;
+}
+
+function validateDroids(errors, warnings, activePlayers, builderPlayers) {
+  currentDroidEntries.forEach((entry, index) => {
+    const label = 'Droid #' + (index + 1);
+    const player = getObjectEntryPlayer(entry);
+    const tile = getObjectEntryTile(entry);
+    if (player < 0 || player > 10) errors.push(label + ' has invalid owner player ' + player + '.');
+    else activePlayers.add(player);
+    if (!tile) {
+      errors.push(label + ' has no valid position.');
+    } else if (tile.x < 0 || tile.y < 0 || tile.x >= mapW || tile.y >= mapH) {
+      errors.push(label + ' is outside the map bounds.');
+    }
+    if (isBuilderDroid(entry)) builderPlayers.add(player);
+    if (!entry.template && !entry.body && !entry.pie && !entry.model && !entry.pies && !entry.models) {
+      warnings.push(label + ' has no template/body/model data.');
+    }
+  });
+}
+
+function validateFeatures(errors, warnings) {
+  const oilTiles = new Map();
+  currentFeatureEntries.forEach((entry, index) => {
+    const label = 'Feature #' + (index + 1);
+    const tile = getObjectEntryTile(entry);
+    if (!tile) {
+      warnings.push(label + ' has no valid position.');
+      return;
+    }
+    if (tile.x < 0 || tile.y < 0 || tile.x >= mapW || tile.y >= mapH) {
+      errors.push(label + ' is outside the map bounds.');
+      return;
+    }
+    if (isOilFeature(entry)) {
+      const key = tile.x + ',' + tile.y;
+      oilTiles.set(key, (oilTiles.get(key) || 0) + 1);
+    }
+  });
+  oilTiles.forEach((count, key) => {
+    if (count > 1) warnings.push('Multiple oil/resource features are stacked at tile ' + key + '.');
+  });
+  return oilTiles;
+}
+
+function validateGamMetadata(errors, warnings) {
+  if (currentMapArchive && !currentGamArchivePath) {
+    warnings.push('Archive has no gam.json. Export will create default .gam metadata.');
+  }
+  if (currentMapArchive && !currentLevelArchivePath) {
+    warnings.push('Archive has no level.json. Export will create default level metadata.');
+  }
+  if (currentGamJson) {
+    const maxX = parseInt(currentGamJson.ScrollMaxX, 10);
+    const maxY = parseInt(currentGamJson.ScrollMaxY, 10);
+    if (Number.isFinite(maxX) && maxX !== mapW) warnings.push('gam.json ScrollMaxX is ' + maxX + ', export will set it to ' + mapW + '.');
+    if (Number.isFinite(maxY) && maxY !== mapH) warnings.push('gam.json ScrollMaxY is ' + maxY + ', export will set it to ' + mapH + '.');
+  }
+  if (currentLevelJson) {
+    const players = parseInt(currentLevelJson.players, 10);
+    if (Number.isFinite(players) && (players < 1 || players > 10)) {
+      warnings.push('level.json player count looks unusual: ' + players + '.');
+    }
+    const levelTileset = String(currentLevelJson.tileset || '').toLowerCase();
+    const activeTileset = String(TILESETS[tilesetIndex]?.name || '').toLowerCase();
+    if (levelTileset && activeTileset && levelTileset !== activeTileset) {
+      warnings.push('level.json tileset is "' + currentLevelJson.tileset + '" but editor tileset is "' + TILESETS[tilesetIndex].name + '".');
+    }
+  }
+}
+
 function validateMapForExport() {
   const errors = [];
   const warnings = [];
   const info = [];
+  const activePlayers = new Set();
+  const commandCenterPlayers = new Set();
+  const builderPlayers = new Set();
 
   if (!Number.isInteger(mapW) || !Number.isInteger(mapH) || mapW <= 0 || mapH <= 0) {
     errors.push('Map size is invalid.');
@@ -1604,6 +1762,9 @@ function validateMapForExport() {
     const player = getStructurePlayer(group);
     if (!def) errors.push(label + ' has unknown structure id "' + (data.name || 'missing') + '".');
     if (!Number.isInteger(player) || player < 0 || player > 10) errors.push(label + ' has invalid owner player ' + player + '.');
+    else activePlayers.add(player);
+    const defText = ((def?.id || '') + ' ' + (def?.name || '')).toLowerCase();
+    if (defText.includes('commandcentre') || defText.includes('command center')) commandCenterPlayers.add(player);
     if (!footprint) {
       errors.push(label + ' has no footprint.');
     } else if (footprint.x < 0 || footprint.y < 0 || footprint.x + footprint.sizeX > mapW || footprint.y + footprint.sizeY > mapH) {
@@ -1614,12 +1775,33 @@ function validateMapForExport() {
     }
   });
   validateStructureOverlaps(groups, errors);
+  validateDroids(errors, warnings, activePlayers, builderPlayers);
+  const oilTiles = validateFeatures(errors, warnings);
+  validateGamMetadata(errors, warnings);
+
+  const extractorGroups = groups.filter(group => String(getStructureGroupDef(group)?.id || '').toLowerCase() === 'a0resourceextractor');
+  extractorGroups.forEach((group, index) => {
+    const footprint = getStructureFootprint(group);
+    if (footprint && oilTiles.size && !oilTiles.has(footprint.x + ',' + footprint.y)) {
+      warnings.push('Resource extractor #' + (index + 1) + ' is not on a known oil/resource feature tile.');
+    }
+  });
+
+  const playerCount = getDeclaredPlayerCount(activePlayers);
+  if (playerCount > 0 && (groups.length || currentDroidEntries.length)) {
+    for (let player = 0; player < playerCount; player++) {
+      if (!commandCenterPlayers.has(player)) warnings.push('Player ' + player + ' has no Command Center.');
+      if (!builderPlayers.has(player)) warnings.push('Player ' + player + ' has no builder truck droid.');
+    }
+  }
 
   if (!groups.length) warnings.push('No structures are placed. That is fine for terrain-only maps.');
+  if (!currentDroidEntries.length) warnings.push('No droids found. Advanced-base maps usually need at least one builder truck per player.');
+  if (!currentFeatureEntries.length && extractorGroups.length) warnings.push('No feature.json oil/resource data found, but resource extractors are placed.');
   if (savedMapNeedsAdvancedBases()) {
     warnings.push('This map has defenses, walls, gates, or command structures. Use Advanced Bases in Warzone to keep them in game.');
   }
-  info.push('Checked map size, tile/height grids, structure ids, owners, bounds, overlaps, module parent rules, and module limits.');
+  info.push('Checked map size, tile/height grids, structures, droids, oil/resources, player starts, .gam metadata, and module rules.');
 
   return { errors, warnings, info };
 }
@@ -3381,12 +3563,15 @@ async function loadStructuresFromZip(zip) {
 
 async function loadDroidsFromZip(zip) {
   const droidName = Object.keys(zip.files).find(fn => fn.toLowerCase().endsWith('droid.json') && !zip.files[fn].dir);
+  currentDroidArchivePath = droidName || null;
+  currentDroidEntries = [];
   if (!droidName) return;
   try {
     await loadComponentDefs();
     const text = await zip.files[droidName].async('string');
     const data = JSON.parse(text);
     const entries = Array.isArray(data) ? data : Array.isArray(data.droids) ? data.droids : Object.values(data);
+    currentDroidEntries = entries.filter(entry => entry && typeof entry === 'object');
     for (const entry of entries) {
       if (entry.template && templateDefs && templateDefs[entry.template]) {
         const t = templateDefs[entry.template];
@@ -3466,6 +3651,7 @@ async function loadDroidsFromZip(zip) {
           const minY = group.userData.minY || 0;
           group.position.set(posX - cX, h - minY, posZ - cZ);
           group.rotation.y = -yaw;
+          group.userData.droidExport = entry;
           objectsGroup.add(group);
           continue;
         } catch (e) {
@@ -3479,6 +3665,7 @@ async function loadDroidsFromZip(zip) {
       mesh.rotation.y = -yaw;
       mesh.position.set(posX, h, posZ);
       mesh.userData.cullable = true;
+      mesh.userData.droidExport = entry;
       objectsGroup.add(mesh);
     }
     if (objectsGroup && !scene.children.includes(objectsGroup)) {
@@ -3512,6 +3699,7 @@ async function loadMapFile(file) {
   currentMapExportInfo = null;
   currentStructArchivePath = null;
   currentStructJsonStyle = 'array';
+  resetLoadedMetadata();
   let found = false;
   let autoTs = 0;
   if (fileExt === 'map' || fileExt === 'json') {
@@ -3554,6 +3742,7 @@ async function loadMapFile(file) {
     const buf = await file.arrayBuffer();
     setLoadingProgress('Opening map archive', 30);
     const zip = await JSZip.loadAsync(buf);
+    await loadArchiveMetadata(zip);
     let names = Object.keys(zip.files).map(n => n.replace(/\\/g, '/'));
     const ttypesName = names.find(n => n.toLowerCase().endsWith('ttypes.ttp'));
     let ttypesMap = null;
@@ -4046,6 +4235,7 @@ async function newMap() {
   currentMapExportInfo = null;
   currentStructArchivePath = null;
   currentStructJsonStyle = 'array';
+  resetLoadedMetadata();
   await setTileset(0);
   const w = DEFAULT_MAP_W;
   const h = DEFAULT_MAP_H;
