@@ -47,6 +47,11 @@ const saveResultOverlay = document.getElementById('saveResultOverlay');
 const saveResultFilename = document.getElementById('saveResultFilename');
 const saveResultLocation = document.getElementById('saveResultLocation');
 const saveResultCloseBtn = document.getElementById('saveResultCloseBtn');
+const validationOverlay = document.getElementById('validationOverlay');
+const validationSummary = document.getElementById('validationSummary');
+const validationList = document.getElementById('validationList');
+const validationCancelBtn = document.getElementById('validationCancelBtn');
+const validationContinueBtn = document.getElementById('validationContinueBtn');
 const overlayMsg = document.getElementById('overlayMsg');
 const overlayText = document.getElementById('overlayText');
 function setLoadingProgress(detail, percent) {
@@ -1517,6 +1522,155 @@ function savedMapNeedsAdvancedBases() {
   });
 }
 
+function getStructureLabel(group, index) {
+  const data = group?.userData?.structureExport || {};
+  const def = getStructureDefById(data.name);
+  return (def?.name || data.name || 'Structure') + ' #' + (index + 1);
+}
+
+function validateStructureOverlaps(groups, errors) {
+  const footprints = groups.map((group, index) => ({
+    group,
+    index,
+    def: getStructureGroupDef(group),
+    footprint: getStructureFootprint(group)
+  })).filter(item => item.footprint);
+  const moduleCounts = new Map();
+
+  for (let i = 0; i < footprints.length; i++) {
+    const a = footprints[i];
+    const moduleRule = getModuleParentTypes(a.def);
+    if (moduleRule) {
+      const sameTileItems = footprints.filter(item => footprintsMatch(item.footprint, a.footprint));
+      const parent = sameTileItems.find(item => {
+        const type = String(item.def?.type || '').toLowerCase();
+        return item !== a && moduleRule.parents.has(type);
+      });
+      if (!parent) {
+        errors.push(getStructureLabel(a.group, a.index) + ' is a module but is not on a matching parent structure.');
+      } else {
+        const key = String(a.def?.id || '').toLowerCase() + '@' + a.footprint.x + ',' + a.footprint.y;
+        moduleCounts.set(key, (moduleCounts.get(key) || 0) + 1);
+      }
+    }
+
+    for (let j = i + 1; j < footprints.length; j++) {
+      const b = footprints[j];
+      if (!footprintsOverlap(a.footprint, b.footprint)) continue;
+      const aRule = getModuleParentTypes(a.def);
+      const bRule = getModuleParentTypes(b.def);
+      const aOnB = aRule && footprintsMatch(a.footprint, b.footprint) && aRule.parents.has(String(b.def?.type || '').toLowerCase());
+      const bOnA = bRule && footprintsMatch(a.footprint, b.footprint) && bRule.parents.has(String(a.def?.type || '').toLowerCase());
+      const sameModuleStack = aRule && bRule &&
+        String(a.def?.id || '').toLowerCase() === String(b.def?.id || '').toLowerCase() &&
+        footprintsMatch(a.footprint, b.footprint);
+      if (!aOnB && !bOnA && !sameModuleStack) {
+        errors.push(getStructureLabel(a.group, a.index) + ' overlaps ' + getStructureLabel(b.group, b.index) + '.');
+      }
+    }
+  }
+
+  moduleCounts.forEach((count, key) => {
+    const id = key.split('@')[0];
+    const def = getStructureDefById(id);
+    const rule = getModuleParentTypes(def);
+    if (rule && count > rule.max) {
+      errors.push((def?.name || id) + ' exceeds module limit at tile ' + key.split('@')[1] + '.');
+    }
+  });
+}
+
+function validateMapForExport() {
+  const errors = [];
+  const warnings = [];
+  const info = [];
+
+  if (!Number.isInteger(mapW) || !Number.isInteger(mapH) || mapW <= 0 || mapH <= 0) {
+    errors.push('Map size is invalid.');
+  }
+  if (!Array.isArray(mapTiles) || mapTiles.length !== mapH || mapTiles.some(row => !Array.isArray(row) || row.length !== mapW)) {
+    errors.push('Tile grid size does not match map size.');
+  }
+  if (!Array.isArray(mapHeights) || mapHeights.length !== mapH || mapHeights.some(row => !Array.isArray(row) || row.length !== mapW)) {
+    errors.push('Height grid size does not match map size.');
+  }
+
+  const groups = objectsGroup ? objectsGroup.children.filter(group => group?.userData?.structureExport) : [];
+  groups.forEach((group, index) => {
+    const data = group.userData.structureExport;
+    const def = getStructureDefById(data.name);
+    const label = getStructureLabel(group, index);
+    const footprint = getStructureFootprint(group);
+    const player = getStructurePlayer(group);
+    if (!def) errors.push(label + ' has unknown structure id "' + (data.name || 'missing') + '".');
+    if (!Number.isInteger(player) || player < 0 || player > 10) errors.push(label + ' has invalid owner player ' + player + '.');
+    if (!footprint) {
+      errors.push(label + ' has no footprint.');
+    } else if (footprint.x < 0 || footprint.y < 0 || footprint.x + footprint.sizeX > mapW || footprint.y + footprint.sizeY > mapH) {
+      errors.push(label + ' is outside the map bounds.');
+    }
+    if (!Number.isFinite(getStructureRotationDegrees(group))) {
+      errors.push(label + ' has invalid rotation.');
+    }
+  });
+  validateStructureOverlaps(groups, errors);
+
+  if (!groups.length) warnings.push('No structures are placed. That is fine for terrain-only maps.');
+  if (savedMapNeedsAdvancedBases()) {
+    warnings.push('This map has defenses, walls, gates, or command structures. Use Advanced Bases in Warzone to keep them in game.');
+  }
+  info.push('Checked map size, tile/height grids, structure ids, owners, bounds, overlaps, module parent rules, and module limits.');
+
+  return { errors, warnings, info };
+}
+
+function showValidationDialog(result, allowContinue = false) {
+  if (!validationOverlay) return Promise.resolve(!result.errors.length);
+  return new Promise(resolve => {
+    const hasErrors = result.errors.length > 0;
+    const hasWarnings = result.warnings.length > 0;
+    validationSummary.textContent = hasErrors
+      ? result.errors.length + ' error(s) must be fixed before export.'
+      : hasWarnings
+        ? result.warnings.length + ' warning(s) found. You can still export if these are expected.'
+        : 'No problems found. Map is ready to export.';
+    validationList.innerHTML = '';
+    const items = [
+      ...result.errors.map(text => ({ text, type: 'error' })),
+      ...result.warnings.map(text => ({ text, type: 'warning' })),
+      ...result.info.map(text => ({ text, type: 'info' }))
+    ];
+    items.forEach(item => {
+      const li = document.createElement('li');
+      li.textContent = item.text;
+      li.className = item.type;
+      validationList.appendChild(li);
+    });
+    const close = (value) => {
+      validationOverlay.classList.add('hidden');
+      validationCancelBtn.onclick = null;
+      validationContinueBtn.onclick = null;
+      resolve(value);
+    };
+    validationContinueBtn.style.display = allowContinue && !hasErrors ? 'inline-block' : 'none';
+    validationCancelBtn.textContent = allowContinue && !hasErrors ? 'Cancel' : 'Close';
+    validationCancelBtn.onclick = () => close(false);
+    validationContinueBtn.onclick = () => close(true);
+    validationOverlay.classList.remove('hidden');
+  });
+}
+
+async function validateMapFromFileTab() {
+  const result = validateMapForExport();
+  await showValidationDialog(result, false);
+  const summary = result.errors.length
+    ? 'Validation found ' + result.errors.length + ' error(s).'
+    : result.warnings.length
+      ? 'Validation found ' + result.warnings.length + ' warning(s).'
+      : 'Validation passed.';
+  setFileStatus(summary);
+}
+
 function updateStructJson(zip) {
   const structPath = currentStructArchivePath || 'struct.json';
   zip.file(structPath, buildStructJson());
@@ -1539,6 +1693,19 @@ async function saveCurrentMap() {
   const savedName = makeSaveFilename();
   try {
     hideSaveResult();
+    const validation = validateMapForExport();
+    if (validation.errors.length) {
+      await showValidationDialog(validation, false);
+      setFileStatus('Save blocked: fix validation errors first.');
+      return;
+    }
+    if (validation.warnings.length) {
+      const shouldContinue = await showValidationDialog(validation, true);
+      if (!shouldContinue) {
+        setFileStatus('Save cancelled after validation.');
+        return;
+      }
+    }
     if (typeof window !== 'undefined' && typeof window.showSaveFilePicker === 'function') {
       try {
         setFileStatus('Choose save location...');
@@ -1598,6 +1765,7 @@ function setupFilePanel() {
   const loadBtn = document.getElementById('fileLoadBtn');
   const serverBtn = document.getElementById('fileServerBtn');
   const saveBtn = document.getElementById('fileSaveBtn');
+  const validateBtn = document.getElementById('fileValidateBtn');
   const newBtn = document.getElementById('fileNewBtn');
   const input = document.getElementById('wzLoader');
 
@@ -1617,6 +1785,9 @@ function setupFilePanel() {
   }
   if (saveBtn) {
     saveBtn.addEventListener('click', saveCurrentMap);
+  }
+  if (validateBtn) {
+    validateBtn.addEventListener('click', validateMapFromFileTab);
   }
   if (newBtn) {
     newBtn.addEventListener('click', async () => {
