@@ -214,6 +214,11 @@ let previewCamera = null;
 let previewRenderer = null;
 let previewMesh = null;
 let previewLoadToken = 0;
+let droidPreviewScene = null;
+let droidPreviewCamera = null;
+let droidPreviewRenderer = null;
+let droidPreviewMesh = null;
+let droidPreviewLoadToken = 0;
 let highlightLoadToken = 0;
 
 function disposeObject3D(obj) {
@@ -377,6 +382,7 @@ function updateDroidModeUI() {
   }
   if (droidMode !== 'view') clearSelectedDroid();
   if (droidMode !== 'delete') clearHoveredDroid();
+  if (droidMode === 'build') requestAnimationFrame(() => updateDroidPreview());
   if (lastMouseEvent) updateHighlight(lastMouseEvent);
 }
 
@@ -416,6 +422,7 @@ function setDroidDesignerParts(design) {
   if (bodySelect && design?.body) bodySelect.value = design.body;
   if (propulsionSelect && design?.propulsion) propulsionSelect.value = design.propulsion;
   if (weaponSelect && design?.weapon) weaponSelect.value = design.weapon;
+  updateDroidPreview();
 }
 
 function getSelectedDroidDesign() {
@@ -466,6 +473,65 @@ function populateDroidTemplateSelect() {
   customOpt.textContent = 'Custom Droid';
   select.appendChild(customOpt);
   select.value = DROID_BUILD_TEMPLATES.some(template => template.id === current) || current === CUSTOM_DROID_TEMPLATE_ID ? current : 'ConstructionDroid';
+}
+
+function clearDroidPreviewScene() {
+  if (!droidPreviewScene) return;
+  for (let i = droidPreviewScene.children.length - 1; i >= 0; i--) {
+    const child = droidPreviewScene.children[i];
+    if (child.isLight) continue;
+    droidPreviewScene.remove(child);
+    disposeObject3D(child);
+  }
+  droidPreviewMesh = null;
+}
+
+function frameDroidPreview(group) {
+  if (!droidPreviewCamera || !group) return;
+  const box = new THREE.Box3().setFromObject(group);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const center = new THREE.Vector3();
+  box.getCenter(center);
+  const maxDim = Math.max(size.x, size.y, size.z, 1);
+  const fov = droidPreviewCamera.fov * (Math.PI / 180);
+  const cameraZ = (maxDim / 2) / Math.tan(fov / 2);
+  const offset = cameraZ * 1.7;
+  droidPreviewCamera.position.set(center.x + offset, center.y + offset * 0.75, center.z + offset);
+  droidPreviewCamera.lookAt(center);
+  droidPreviewCamera.updateProjectionMatrix();
+}
+
+async function updateDroidPreview() {
+  if (!droidPreviewScene || !droidPreviewRenderer || !droidPreviewCamera) return;
+  const previewDiv = document.getElementById('droidPreview');
+  if (previewDiv) {
+    const w = previewDiv.clientWidth || 160;
+    const h = previewDiv.clientHeight || 180;
+    droidPreviewRenderer.setSize(w, h);
+    droidPreviewCamera.aspect = w / h;
+    droidPreviewCamera.updateProjectionMatrix();
+  }
+  const currentToken = ++droidPreviewLoadToken;
+  clearDroidPreviewScene();
+  try {
+    await loadComponentDefs();
+    const design = getSelectedDroidDesign();
+    const entry = makeDroidEntry(design, 0, 0, 0, selectedDroidRotation);
+    const pieList = getDroidPieList(entry);
+    if (!pieList || !pieList.length) return;
+    const group = await buildDroidGroup(pieList);
+    if (currentToken !== droidPreviewLoadToken) {
+      disposeObject3D(group);
+      return;
+    }
+    group.rotation.y = -selectedDroidRotation * Math.PI / 180;
+    droidPreviewMesh = group;
+    droidPreviewScene.add(group);
+    frameDroidPreview(group);
+  } catch (err) {
+    console.warn('Failed to update droid preview:', err);
+  }
 }
 
 function setDroidMode(mode) {
@@ -2906,6 +2972,7 @@ const initDom = () => {
         design.name = 'Custom Droid';
         setDroidDesignerParts(design);
       }
+      updateDroidPreview();
     });
   }
   ['droidNameInput', 'droidBodySelect', 'droidPropulsionSelect', 'droidWeaponSelect'].forEach(id => {
@@ -2913,7 +2980,9 @@ const initDom = () => {
     if (!el) return;
     el.addEventListener('change', () => {
       if (droidTemplateSelect) droidTemplateSelect.value = CUSTOM_DROID_TEMPLATE_ID;
+      updateDroidPreview();
     });
+    if (id === 'droidNameInput') el.addEventListener('input', updateDroidPreview);
   });
   if (droidPlayerSelect && !droidPlayerSelect.options.length) {
     for (let i = 0; i <= 10; i++) {
@@ -2927,6 +2996,7 @@ const initDom = () => {
   const syncDroidRotationInput = () => {
     selectedDroidRotation = normalizeDegrees(droidRotationInput ? droidRotationInput.value : selectedDroidRotation);
     if (selectedDroidGroup) setDroidRotationDegrees(selectedDroidGroup, selectedDroidRotation);
+    updateDroidPreview();
     if (lastMouseEvent) updateHighlight(lastMouseEvent);
   };
   if (droidRotationInput) {
@@ -2941,6 +3011,7 @@ const initDom = () => {
       selectedDroidRotation = normalizeDegrees(selectedDroidRotation + 90);
       if (droidRotationInput) droidRotationInput.value = String(selectedDroidRotation);
       if (selectedDroidGroup) setDroidRotationDegrees(selectedDroidGroup, selectedDroidRotation);
+      updateDroidPreview();
       if (lastMouseEvent) updateHighlight(lastMouseEvent);
     });
   }
@@ -2949,6 +3020,7 @@ const initDom = () => {
       selectedDroidRotation = normalizeDegrees(selectedDroidRotation - 90);
       if (droidRotationInput) droidRotationInput.value = String(selectedDroidRotation);
       if (selectedDroidGroup) setDroidRotationDegrees(selectedDroidGroup, selectedDroidRotation);
+      updateDroidPreview();
       if (lastMouseEvent) updateHighlight(lastMouseEvent);
     });
   }
@@ -3076,6 +3148,31 @@ const initDom = () => {
     };
     renderPreview();
     updateStructurePreview();
+  }
+  const droidPreviewDiv = document.getElementById('droidPreview');
+  if (droidPreviewDiv) {
+    const width = droidPreviewDiv.clientWidth || 160;
+    const height = droidPreviewDiv.clientHeight || 180;
+    droidPreviewRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    droidPreviewRenderer.setSize(width, height);
+    droidPreviewRenderer.setClearColor(0x151e28, 0);
+    droidPreviewDiv.appendChild(droidPreviewRenderer.domElement);
+    droidPreviewScene = new THREE.Scene();
+    droidPreviewScene.add(new THREE.AmbientLight(0xffffff, 0.85));
+    const droidDirLight = new THREE.DirectionalLight(0xffffff, 0.65);
+    droidDirLight.position.set(8, 14, 8);
+    droidPreviewScene.add(droidDirLight);
+    droidPreviewCamera = new THREE.PerspectiveCamera(38, width / height, 0.1, 100);
+    droidPreviewCamera.position.set(2, 2, 2);
+    droidPreviewCamera.lookAt(0, 0, 0);
+    const renderDroidPreview = () => {
+      if (droidPreviewRenderer && droidPreviewScene && droidPreviewCamera) {
+        droidPreviewRenderer.render(droidPreviewScene, droidPreviewCamera);
+      }
+      requestAnimationFrame(renderDroidPreview);
+    };
+    renderDroidPreview();
+    updateDroidPreview();
   }
   if (threeContainer) {
     // Use pointerdown so tile edits respond immediately on press and

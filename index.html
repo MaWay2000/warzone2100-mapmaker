@@ -585,6 +585,7 @@
           <input type="number" id="droidRotationInput" min="0" max="359" step="1" value="0" style="width:58px; font-size:0.85rem;">
           <span style="font-size:0.8rem; color:#ccd;">deg</span>
         </div>
+        <div id="droidPreview" style="width:100%; height:180px; background:#1a2735; border:1px solid #435066; border-radius:4px; margin:6px 0 4px;"></div>
       </div>
       <div id="droidInfo" style="margin:4px 0 0 0; font-size:0.85rem; color:#ccd; line-height:1.35; white-space:pre-line;">No droid selected.</div>
       <button type="button" id="droidViewDeleteBtn" class="action-btn" style="display:none; margin-top:8px;">Delete droid</button>
@@ -642,7 +643,7 @@
   </div>
 
   <script type="module" src="js/jszip.min.js"></script>
-  <script type="module" src="js/game.js?v=droid-custom-designer"></script>
+  <script type="module" src="js/game.js?v=droid-preview"></script>
 
 <script type="module">
     // Minimal UI bridge your game.js can use
