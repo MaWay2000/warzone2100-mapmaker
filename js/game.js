@@ -188,6 +188,13 @@ let selectedStructureIndex = -1;
 let objectsGroup = new THREE.Group();
 let selectedStructureRotation = 0;
 let structureMode = 'view';
+let droidMode = 'view';
+let selectedDroidRotation = 0;
+let selectedDroidGroup = null;
+let selectedDroidBlinkHelper = null;
+let selectedDroidBlinkTimer = null;
+let hoveredDroidGroup = null;
+let hoveredDroidHelper = null;
 let selectedStructureGroup = null;
 let selectedStructureBlinkHelper = null;
 let selectedStructureBlinkTimer = null;
@@ -217,6 +224,8 @@ function clearMapObjects() {
   if (!objectsGroup) return;
   clearSelectedStructure();
   clearHoveredStructure();
+  clearSelectedDroid();
+  clearHoveredDroid();
   for (let i = objectsGroup.children.length - 1; i >= 0; i--) {
     const obj = objectsGroup.children[i];
     disposeObject3D(obj);
@@ -267,6 +276,169 @@ function pickStructureFromEvent(event) {
   raycaster.setFromCamera(mouse, camera);
   const hits = raycaster.intersectObjects(objectsGroup.children, true);
   return hits.length ? getStructureRootFromObject(hits[0].object) : null;
+}
+
+function getDroidRootFromObject(obj) {
+  let cur = obj;
+  while (cur && cur !== objectsGroup) {
+    if (cur.parent === objectsGroup && cur.userData?.droidExport) return cur;
+    cur = cur.parent;
+  }
+  return null;
+}
+
+function pickDroidFromEvent(event) {
+  if (!event || !threeContainer || !camera || !objectsGroup) return null;
+  const rect = threeContainer.getBoundingClientRect();
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(objectsGroup.children, true);
+  for (const hit of hits) {
+    const root = getDroidRootFromObject(hit.object);
+    if (root) return root;
+  }
+  return null;
+}
+
+function getDroidPlayer(group) {
+  const entry = group?.userData?.droidExport || {};
+  return getObjectEntryPlayer(entry);
+}
+
+function setDroidPlayer(group, player) {
+  if (!group?.userData?.droidExport) return;
+  const nextPlayer = Math.max(0, Math.min(10, parseInt(player, 10) || 0));
+  group.userData.droidExport.startpos = nextPlayer;
+  if (group.userData.droidExport.player !== undefined) group.userData.droidExport.player = nextPlayer;
+  updateDroidInfo(group);
+}
+
+function getDroidRotationDegrees(group) {
+  const entry = group?.userData?.droidExport || {};
+  if (entry.rotDeg !== undefined) return normalizeDegrees(entry.rotDeg);
+  const raw = Array.isArray(entry.rotation) ? entry.rotation[1] : entry.rotation;
+  if (typeof raw === 'number') return normalizeDegrees(Math.abs(raw) > 360 ? raw * 360 / 65536 : raw);
+  return normalizeDegrees(-group.rotation.y * 180 / Math.PI);
+}
+
+function setDroidRotationDegrees(group, degrees) {
+  if (!group?.userData?.droidExport) return;
+  const deg = normalizeDegrees(degrees);
+  group.userData.droidExport.rotDeg = deg;
+  group.userData.droidExport.rotation = [0, degreesToWzAngle(deg), 0];
+  group.rotation.y = -deg * Math.PI / 180;
+  if (selectedDroidBlinkHelper) selectedDroidBlinkHelper.update();
+  if (hoveredDroidHelper) hoveredDroidHelper.update();
+  updateDroidInfo(group);
+}
+
+function updateDroidInfo(group, fallback = 'No droid selected.') {
+  const info = document.getElementById('droidInfo');
+  if (!info) return;
+  if (!group?.userData?.droidExport) {
+    info.textContent = fallback;
+    return;
+  }
+  const entry = group.userData.droidExport;
+  const tile = getObjectEntryTile(entry);
+  info.textContent = [
+    'Selected droid',
+    'Name: ' + (entry.name || entry.template || 'Builder Truck'),
+    'Template: ' + (entry.template || 'custom'),
+    'Player: ' + getDroidPlayer(group),
+    tile ? ('Tile: ' + tile.x + ', ' + tile.y) : 'Tile: unknown',
+    'Rotation: ' + Math.round(getDroidRotationDegrees(group)) + ' deg'
+  ].join('\n');
+}
+
+function updateDroidModeUI() {
+  document.querySelectorAll('[data-droid-mode]').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-droid-mode') === droidMode);
+  });
+  const buildControls = document.getElementById('droidBuildControls');
+  const deleteBtn = document.getElementById('droidViewDeleteBtn');
+  const hint = document.getElementById('droidModeHint');
+  if (buildControls) buildControls.style.display = droidMode === 'build' ? 'block' : 'none';
+  if (deleteBtn) deleteBtn.style.display = droidMode === 'view' && selectedDroidGroup ? 'block' : 'none';
+  if (hint) {
+    if (droidMode === 'build') hint.textContent = 'Click the map to place a builder truck.';
+    else if (droidMode === 'delete') hint.textContent = 'Hover a droid and click mouse1 to remove it.';
+    else hint.textContent = 'Click a droid on the map to view it.';
+  }
+  if (droidMode !== 'view') clearSelectedDroid();
+  if (droidMode !== 'delete') clearHoveredDroid();
+  if (lastMouseEvent) updateHighlight(lastMouseEvent);
+}
+
+function setDroidMode(mode) {
+  droidMode = mode;
+  clearStructurePlacementPreview();
+  updateDroidModeUI();
+}
+
+function clearSelectedDroid() {
+  selectedDroidGroup = null;
+  if (selectedDroidBlinkTimer) {
+    clearInterval(selectedDroidBlinkTimer);
+    selectedDroidBlinkTimer = null;
+  }
+  if (selectedDroidBlinkHelper) {
+    if (scene) scene.remove(selectedDroidBlinkHelper);
+    selectedDroidBlinkHelper = null;
+  }
+}
+
+function selectDroidGroup(group) {
+  clearSelectedDroid();
+  if (!group) {
+    updateDroidInfo(null, 'No droid selected.');
+    updateDroidModeUI();
+    return;
+  }
+  selectedDroidGroup = group;
+  selectedDroidBlinkHelper = new THREE.BoxHelper(group, 0x6cf527);
+  selectedDroidBlinkHelper.layers.set(1);
+  if (scene) scene.add(selectedDroidBlinkHelper);
+  selectedDroidBlinkTimer = setInterval(() => {
+    if (!selectedDroidBlinkHelper) return;
+    selectedDroidBlinkHelper.visible = !selectedDroidBlinkHelper.visible;
+    selectedDroidBlinkHelper.update();
+  }, 350);
+  updateDroidInfo(group);
+  updateDroidModeUI();
+}
+
+function clearHoveredDroid() {
+  hoveredDroidGroup = null;
+  if (hoveredDroidHelper) {
+    if (scene) scene.remove(hoveredDroidHelper);
+    hoveredDroidHelper = null;
+  }
+}
+
+function setHoveredDroid(group) {
+  if (hoveredDroidGroup === group) {
+    if (hoveredDroidHelper) hoveredDroidHelper.update();
+    return;
+  }
+  clearHoveredDroid();
+  if (!group) return;
+  hoveredDroidGroup = group;
+  hoveredDroidHelper = new THREE.BoxHelper(group, droidMode === 'delete' ? 0xff5555 : 0x66aaff);
+  hoveredDroidHelper.layers.set(1);
+  if (scene) scene.add(hoveredDroidHelper);
+}
+
+function removeDroidGroup(group) {
+  if (!group || !objectsGroup.children.includes(group)) return false;
+  if (selectedDroidGroup === group) clearSelectedDroid();
+  if (hoveredDroidGroup === group) clearHoveredDroid();
+  const entry = group.userData?.droidExport;
+  if (entry) currentDroidEntries = currentDroidEntries.filter(item => item !== entry);
+  objectsGroup.remove(group);
+  drawMap3D();
+  return true;
 }
 
 function describeStructureGroup(group) {
@@ -1479,6 +1651,99 @@ function resetLoadedMetadata() {
   currentLevelJson = null;
 }
 
+function makeDroidEntry(templateName, player, tileX, tileY, degrees) {
+  const template = templateDefs?.[templateName] || { body: 'Body1REC', propulsion: 'wheeled01', weapon: 'DROID_CONSTRUCT' };
+  return {
+    name: templateName === 'ConstructionDroid' ? 'Builder Truck' : templateName,
+    template: templateName,
+    body: template.body,
+    propulsion: template.propulsion,
+    weapon: template.weapon || 'DROID_CONSTRUCT',
+    startpos: Math.max(0, Math.min(10, parseInt(player, 10) || 0)),
+    position: [Math.round((tileX + 0.5) * 128), Math.round((tileY + 0.5) * 128)],
+    rotation: [0, degreesToWzAngle(degrees), 0],
+    rotDeg: normalizeDegrees(degrees)
+  };
+}
+
+function getDroidPieList(entry) {
+  if (Array.isArray(entry.pies)) return entry.pies;
+  if (Array.isArray(entry.models)) return entry.models;
+  if (entry.pie) return [entry.pie];
+  if (entry.model) return [entry.model];
+  const parts = [];
+  const toPath = (val, prefix = '') => {
+    let name = String(val);
+    if (!name.toLowerCase().endsWith('.pie')) name += '.pie';
+    if (name.includes('/')) return name;
+    return prefix + name;
+  };
+  const addPart = (val, prefix) => {
+    if (!val) return;
+    if (Array.isArray(val)) val.forEach(v => parts.push(toPath(v, prefix)));
+    else parts.push(toPath(val, prefix));
+  };
+  const addWeapon = val => {
+    if (!val) return;
+    const wd = weaponDefs && weaponDefs[val];
+    if (wd) {
+      const modelPath = wd.model && toPath(wd.model, 'components/weapons/');
+      const mountPath = wd.mountModel && toPath(wd.mountModel, 'components/weapons/');
+      if (modelPath) parts.push(modelPath);
+      if (mountPath && mountPath !== modelPath) parts.push(mountPath);
+    } else {
+      addPart(val, 'components/weapons/');
+    }
+  };
+  const bodyId = entry.body;
+  const propId = entry.propulsion;
+  if (bodyId) {
+    const bd = bodyDefs && bodyDefs[bodyId];
+    if (bd && bd.model) addPart(bd.model, 'components/bodies/');
+    else addPart(bodyId, 'components/bodies/');
+    if (bd && bd.propulsionExtraModels && propId) {
+      const extra = bd.propulsionExtraModels[propId];
+      if (extra) {
+        if (typeof extra === 'string') addPart(extra, 'components/prop/');
+        else Object.values(extra).forEach(v => addPart(v, 'components/prop/'));
+      }
+    }
+  }
+  if (propId) {
+    const pd = propDefs && propDefs[propId];
+    if (pd && pd.model) addPart(pd.model, 'components/prop/');
+    else addPart(propId, 'components/prop/');
+  }
+  const weapons = entry.weapon || entry.weapons;
+  if (Array.isArray(weapons)) weapons.forEach(addWeapon);
+  else addWeapon(weapons);
+  return parts.length ? parts : null;
+}
+
+function getDroidExportEntry(group) {
+  const entry = group?.userData?.droidExport;
+  if (!entry) return null;
+  const out = { ...entry };
+  const centerX = group.position.x + (group.userData.centerX || 0);
+  const centerY = group.position.z + (group.userData.centerZ || 0);
+  out.position = [Math.round(centerX * 128), Math.round(centerY * 128)];
+  out.rotation = [0, degreesToWzAngle(getDroidRotationDegrees(group)), 0];
+  out.startpos = getDroidPlayer(group);
+  delete out.rotDeg;
+  return out;
+}
+
+function buildDroidJson() {
+  const entries = [];
+  if (objectsGroup) {
+    objectsGroup.children.forEach(group => {
+      const entry = getDroidExportEntry(group);
+      if (entry) entries.push(entry);
+    });
+  }
+  return JSON.stringify({ version: 2, droids: entries }, null, 2);
+}
+
 async function updateGammaMetadata(zip, base) {
   if (!zip.file('level.json')) zip.file('level.json', buildDefaultLevelJson(base));
   if (!zip.file('gam.json')) {
@@ -1858,6 +2123,11 @@ function updateStructJson(zip) {
   zip.file(structPath, buildStructJson());
 }
 
+function updateDroidJson(zip) {
+  const droidPath = currentDroidArchivePath || 'droid.json';
+  zip.file(droidPath, buildDroidJson());
+}
+
 async function buildWzFileBlob() {
   const zip = currentMapArchive || new JSZip();
   const base = getSafeMapBase();
@@ -1866,6 +2136,7 @@ async function buildWzFileBlob() {
     await updateGammaMetadata(zip, base);
   }
   updateStructJson(zip);
+  updateDroidJson(zip);
   zip.file(mapPath, buildMapFileBytes());
   return await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
 }
@@ -2500,7 +2771,65 @@ const initDom = () => {
       previewGroup = null;
     }
     clearHoveredStructure();
+    clearHoveredDroid();
   });
+  const droidPlayerSelect = document.getElementById('droidPlayerSelect');
+  if (droidPlayerSelect && !droidPlayerSelect.options.length) {
+    for (let i = 0; i <= 10; i++) {
+      const opt = document.createElement('option');
+      opt.value = String(i);
+      opt.textContent = 'Player ' + i;
+      droidPlayerSelect.appendChild(opt);
+    }
+  }
+  const droidRotationInput = document.getElementById('droidRotationInput');
+  const syncDroidRotationInput = () => {
+    selectedDroidRotation = normalizeDegrees(droidRotationInput ? droidRotationInput.value : selectedDroidRotation);
+    if (selectedDroidGroup) setDroidRotationDegrees(selectedDroidGroup, selectedDroidRotation);
+    if (lastMouseEvent) updateHighlight(lastMouseEvent);
+  };
+  if (droidRotationInput) {
+    droidRotationInput.value = String(selectedDroidRotation);
+    droidRotationInput.addEventListener('input', syncDroidRotationInput);
+    droidRotationInput.addEventListener('change', syncDroidRotationInput);
+  }
+  const droidRotateLeft = document.getElementById('droidRotateLeft');
+  const droidRotateRight = document.getElementById('droidRotateRight');
+  if (droidRotateLeft) {
+    droidRotateLeft.addEventListener('click', () => {
+      selectedDroidRotation = normalizeDegrees(selectedDroidRotation + 90);
+      if (droidRotationInput) droidRotationInput.value = String(selectedDroidRotation);
+      if (selectedDroidGroup) setDroidRotationDegrees(selectedDroidGroup, selectedDroidRotation);
+      if (lastMouseEvent) updateHighlight(lastMouseEvent);
+    });
+  }
+  if (droidRotateRight) {
+    droidRotateRight.addEventListener('click', () => {
+      selectedDroidRotation = normalizeDegrees(selectedDroidRotation - 90);
+      if (droidRotationInput) droidRotationInput.value = String(selectedDroidRotation);
+      if (selectedDroidGroup) setDroidRotationDegrees(selectedDroidGroup, selectedDroidRotation);
+      if (lastMouseEvent) updateHighlight(lastMouseEvent);
+    });
+  }
+  if (droidPlayerSelect) {
+    droidPlayerSelect.addEventListener('change', () => {
+      if (selectedDroidGroup) setDroidPlayer(selectedDroidGroup, droidPlayerSelect.value);
+    });
+  }
+  document.querySelectorAll('[data-droid-mode]').forEach(btn => {
+    btn.addEventListener('click', () => setDroidMode(btn.getAttribute('data-droid-mode')));
+  });
+  const droidViewDeleteBtn = document.getElementById('droidViewDeleteBtn');
+  if (droidViewDeleteBtn) {
+    droidViewDeleteBtn.addEventListener('click', () => {
+      const group = selectedDroidGroup;
+      if (group && removeDroidGroup(group)) {
+        updateDroidInfo(null, 'No droid selected.');
+        updateDroidModeUI();
+      }
+    });
+  }
+  updateDroidModeUI();
   setTileset(tilesetIndex);
   const structureSelect = document.getElementById('structureSelect');
   const structureFilter = document.getElementById('structureFilter');
@@ -2623,8 +2952,41 @@ function handleMapContextMenu(event) {
   }
 }
 
+async function placeDroidAtTile(tileX, tileY) {
+  await loadComponentDefs();
+  const playerSelect = document.getElementById('droidPlayerSelect');
+  const templateSelect = document.getElementById('droidTemplateSelect');
+  const player = playerSelect ? playerSelect.value : 0;
+  const templateName = templateSelect ? templateSelect.value : 'ConstructionDroid';
+  const entry = makeDroidEntry(templateName, player, tileX, tileY, selectedDroidRotation);
+  const pieList = getDroidPieList(entry);
+  let group;
+  if (pieList && pieList.length) {
+    group = await buildDroidGroup(pieList);
+  } else {
+    const geom = new THREE.ConeGeometry(0.3, 0.6, 4);
+    const mat = new THREE.MeshLambertMaterial({ color: PLAYER_COLORS[entry.startpos % PLAYER_COLORS.length] });
+    group = new THREE.Mesh(geom, mat);
+    group.userData.centerX = 0;
+    group.userData.centerZ = 0;
+    group.userData.minY = -0.3;
+  }
+  const h = (mapHeights?.[tileY]?.[tileX] ?? 0) * HEIGHT_SCALE + 0.07;
+  const cX = group.userData.centerX || 0;
+  const cZ = group.userData.centerZ || 0;
+  const minY = group.userData.minY || 0;
+  group.position.set(tileX + 0.5 - cX, h - minY, tileY + 0.5 - cZ);
+  group.rotation.y = -selectedDroidRotation * Math.PI / 180;
+  group.userData.droidExport = entry;
+  currentDroidEntries.push(entry);
+  objectsGroup.add(group);
+  if (!scene.children.includes(objectsGroup)) scene.add(objectsGroup);
+  drawMap3D();
+  setFileStatus('Placed builder truck for player ' + entry.startpos + '.');
+}
+
 function handleEditClick(event) {
-  if (activeTab !== 'textures' && activeTab !== 'height' && activeTab !== 'objects') return;
+  if (activeTab !== 'textures' && activeTab !== 'height' && activeTab !== 'objects' && activeTab !== 'droids') return;
   if (event.button !== undefined && event.button !== 0) return;
   if (activeTab === 'objects' && structureMode !== 'build') {
     const group = pickStructureFromEvent(event);
@@ -2634,6 +2996,15 @@ function handleEditClick(event) {
       if (removeStructureGroup(group)) {
         pushUndo({ type: 'structure-delete', group });
       }
+    }
+    return;
+  }
+  if (activeTab === 'droids' && droidMode !== 'build') {
+    const group = pickDroidFromEvent(event);
+    if (droidMode === 'view') {
+      selectDroidGroup(group);
+    } else if (droidMode === 'delete' && group) {
+      removeDroidGroup(group);
     }
     return;
   }
@@ -2757,6 +3128,11 @@ function handleEditClick(event) {
       lastMouseEvent = event;
       updateHighlight(event);
     }).catch(() => {});
+  } else if (activeTab === 'droids' && droidMode === 'build') {
+    placeDroidAtTile(tileX, tileY).catch(err => {
+      console.error('Failed to place droid:', err);
+      setFileStatus('Failed to place droid.');
+    });
   }
 }
 function __old_updateHighlight(event) {
@@ -3067,6 +3443,13 @@ function setActiveTab(tab) {
   } else {
     clearHoveredStructure();
     clearSelectedStructure();
+  }
+  if (tab === 'droids') {
+    updateDroidModeUI();
+    updateDroidInfo(selectedDroidGroup, 'No droid selected.');
+  } else {
+    clearHoveredDroid();
+    clearSelectedDroid();
   }
 }
 window.setActiveTab = setActiveTab;
@@ -3428,6 +3811,15 @@ function cancelCurrentMapAction() {
       clearStructurePlacementPreview();
     } else if (structureMode === 'delete') {
       clearHoveredStructure();
+    }
+  } else if (activeTab === 'droids') {
+    if (droidMode === 'view') {
+      clearSelectedDroid();
+      updateDroidInfo(null, 'No droid selected.');
+    } else if (droidMode === 'build') {
+      clearStructurePlacementPreview();
+    } else if (droidMode === 'delete') {
+      clearHoveredDroid();
     }
   }
 }
@@ -4424,6 +4816,47 @@ function updateHighlight(event) {
     highlightMesh.position.set(minX + width / 2, maxH + 0.02, minY + height / 2);
     scene.add(highlightMesh);
     updateTileApplyBtn();
+    return;
+  }
+  if (activeTab === 'droids') {
+    if (!threeContainer || !scene) return;
+    if (droidMode !== 'build') {
+      clearStructurePlacementPreview();
+      setHoveredDroid(event ? pickDroidFromEvent(event) : null);
+      return;
+    }
+    clearHoveredDroid();
+    if (!event) return;
+    const rect = threeContainer.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObjects(scene.children, true);
+    if (!intersects.length) {
+      clearStructurePlacementPreview();
+      return;
+    }
+    const point = intersects[0].point;
+    const tileX = Math.floor(point.x);
+    const tileY = Math.floor(point.z);
+    if (tileX < 0 || tileX >= mapW || tileY < 0 || tileY >= mapH) {
+      clearStructurePlacementPreview();
+      return;
+    }
+    const previewKey = 'droid|' + tileX + '|' + tileY + '|' + selectedDroidRotation;
+    if (previewKey === highlightCachedKey && previewGroup) return;
+    clearStructurePlacementPreview();
+    highlightCachedKey = previewKey;
+    previewGroup = new THREE.Group();
+    const geo = new THREE.PlaneGeometry(1, 1);
+    geo.rotateX(-Math.PI / 2);
+    const mat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
+    highlightMesh = new THREE.Mesh(geo, mat);
+    const h = (mapHeights?.[tileY]?.[tileX] ?? 0) * HEIGHT_SCALE;
+    highlightMesh.position.set(tileX + 0.5, h + 0.03, tileY + 0.5);
+    previewGroup.add(highlightMesh);
+    previewGroup.traverse(obj => obj.layers.set(1));
+    scene.add(previewGroup);
     return;
   }
   // For other textures/height/object behavior

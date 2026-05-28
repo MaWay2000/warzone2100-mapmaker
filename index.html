@@ -549,12 +549,32 @@
     <!-- DROIDS TAB -->
     <div id="droidsPanel" class="panel" style="display:none;">
       <div style="display:flex; gap:4px; margin-bottom:6px;">
-        <button type="button" class="action-btn active">View</button>
-        <button type="button" class="action-btn" disabled>Build</button>
-        <button type="button" class="action-btn" disabled>Delete</button>
+        <button type="button" class="action-btn active" data-droid-mode="view">View</button>
+        <button type="button" class="action-btn" data-droid-mode="build">Build</button>
+        <button type="button" class="action-btn" data-droid-mode="delete">Delete</button>
       </div>
-      <p style="margin:4px 0 0 0; font-size:0.85rem; color:#ccd;">Droid editing tools will be added here.</p>
-      <p style="margin:6px 0 0 0; font-size:0.75rem; color:#8aa;">Loaded map droids are visible on the map. Build and delete controls are not enabled yet.</p>
+      <div id="droidBuildControls" style="display:none;">
+        <div style="margin-bottom:4px;">
+          <label for="droidTemplateSelect" style="margin:0; display:block;">Droid:</label>
+          <select id="droidTemplateSelect" style="width:100%; font-size:0.9rem;">
+            <option value="ConstructionDroid">Builder Truck</option>
+          </select>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+          <label for="droidPlayerSelect" style="margin:0; font-size:0.85rem;">Owner:</label>
+          <select id="droidPlayerSelect" style="flex:1; font-size:0.85rem;"></select>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+          <label for="droidRotationInput" style="margin:0; font-size:0.85rem;">Rotation:</label>
+          <button type="button" id="droidRotateLeft" class="rotate-btn">âŸ²</button>
+          <button type="button" id="droidRotateRight" class="rotate-btn">âŸ³</button>
+          <input type="number" id="droidRotationInput" min="0" max="359" step="1" value="0" style="width:58px; font-size:0.85rem;">
+          <span style="font-size:0.8rem; color:#ccd;">deg</span>
+        </div>
+      </div>
+      <div id="droidInfo" style="margin:4px 0 0 0; font-size:0.85rem; color:#ccd; line-height:1.35; white-space:pre-line;">No droid selected.</div>
+      <button type="button" id="droidViewDeleteBtn" class="action-btn" style="display:none; margin-top:8px;">Delete droid</button>
+      <p id="droidModeHint" style="margin:6px 0 0 0; font-size:0.75rem; color:#8aa;"></p>
     </div>
   </div>
 
@@ -608,7 +628,7 @@
   </div>
 
   <script type="module" src="js/jszip.min.js"></script>
-  <script type="module" src="js/game.js?v=map-validation-extended"></script>
+  <script type="module" src="js/game.js?v=droid-build-tools"></script>
 
 <script type="module">
     // Minimal UI bridge your game.js can use
