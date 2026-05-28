@@ -21,6 +21,7 @@ import { loadSensorDefs, getSensorModels } from "./sensors.js";
 import { buildDroidGroup } from "./droidGroup.js";
 
 let bodyDefs, propDefs, weaponDefs, templateDefs;
+const CUSTOM_DROID_TEMPLATE_ID = 'CustomDroid';
 const DROID_BUILD_TEMPLATES = [
   { id: 'ConstructionDroid', name: 'Builder Truck', body: 'Body1REC', propulsion: 'wheeled01', weapon: 'DROID_CONSTRUCT' },
   { id: 'ViperMGWheels', name: 'Viper MG Wheels', body: 'Body1REC', propulsion: 'wheeled01', weapon: 'MG1Mk1' },
@@ -379,6 +380,76 @@ function updateDroidModeUI() {
   if (lastMouseEvent) updateHighlight(lastMouseEvent);
 }
 
+function getComponentOptionLabel(def, id) {
+  const name = String(def?.name || id || '').replace(/\*/g, '');
+  return name && name !== id ? name + ' (' + id + ')' : String(id || '');
+}
+
+function populateComponentSelect(select, defs, filterFn, preferredIds = []) {
+  if (!select || !defs) return;
+  const current = select.value;
+  const preferred = new Set(preferredIds);
+  const items = Object.entries(defs)
+    .filter(([id, def]) => filterFn(id, def))
+    .sort((a, b) => {
+      const ap = preferred.has(a[0]) ? 0 : 1;
+      const bp = preferred.has(b[0]) ? 0 : 1;
+      if (ap !== bp) return ap - bp;
+      return getComponentOptionLabel(a[1], a[0]).localeCompare(getComponentOptionLabel(b[1], b[0]));
+    });
+  select.innerHTML = '';
+  items.forEach(([id, def]) => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = getComponentOptionLabel(def, id);
+    select.appendChild(opt);
+  });
+  if (items.some(([id]) => id === current)) select.value = current;
+}
+
+function setDroidDesignerParts(design) {
+  const nameInput = document.getElementById('droidNameInput');
+  const bodySelect = document.getElementById('droidBodySelect');
+  const propulsionSelect = document.getElementById('droidPropulsionSelect');
+  const weaponSelect = document.getElementById('droidWeaponSelect');
+  if (nameInput) nameInput.value = design?.name || 'Custom Droid';
+  if (bodySelect && design?.body) bodySelect.value = design.body;
+  if (propulsionSelect && design?.propulsion) propulsionSelect.value = design.propulsion;
+  if (weaponSelect && design?.weapon) weaponSelect.value = design.weapon;
+}
+
+function getSelectedDroidDesign() {
+  const templateSelect = document.getElementById('droidTemplateSelect');
+  const nameInput = document.getElementById('droidNameInput');
+  const bodySelect = document.getElementById('droidBodySelect');
+  const propulsionSelect = document.getElementById('droidPropulsionSelect');
+  const weaponSelect = document.getElementById('droidWeaponSelect');
+  const templateId = templateSelect?.value || 'ConstructionDroid';
+  const preset = DROID_BUILD_TEMPLATES.find(item => item.id === templateId);
+  const body = bodySelect?.value || preset?.body || 'Body1REC';
+  const propulsion = propulsionSelect?.value || preset?.propulsion || 'wheeled01';
+  const weapon = weaponSelect?.value || preset?.weapon || 'DROID_CONSTRUCT';
+  return {
+    id: templateId,
+    name: (nameInput?.value || preset?.name || 'Custom Droid').trim() || 'Custom Droid',
+    body,
+    propulsion,
+    weapon
+  };
+}
+
+function populateDroidDesignerControls() {
+  const bodySelect = document.getElementById('droidBodySelect');
+  const propulsionSelect = document.getElementById('droidPropulsionSelect');
+  const weaponSelect = document.getElementById('droidWeaponSelect');
+  populateComponentSelect(bodySelect, bodyDefs, (id, def) => def?.model && (def.weaponSlots === undefined || def.weaponSlots > 0), ['Body1REC', 'Body5REC', 'Body4ABT']);
+  populateComponentSelect(propulsionSelect, propDefs, (id, def) => def?.model, ['wheeled01', 'HalfTrack', 'tracked01']);
+  populateComponentSelect(weaponSelect, weaponDefs, (id, def) => def?.model || def?.mountModel, ['DROID_CONSTRUCT', 'MG1Mk1', 'Cannon1Mk1', 'Rocket-Pod']);
+  const currentTemplate = document.getElementById('droidTemplateSelect')?.value || 'ConstructionDroid';
+  const preset = DROID_BUILD_TEMPLATES.find(item => item.id === currentTemplate) || DROID_BUILD_TEMPLATES[0];
+  setDroidDesignerParts(preset);
+}
+
 function populateDroidTemplateSelect() {
   const select = document.getElementById('droidTemplateSelect');
   if (!select) return;
@@ -390,7 +461,11 @@ function populateDroidTemplateSelect() {
     opt.textContent = template.name;
     select.appendChild(opt);
   });
-  select.value = DROID_BUILD_TEMPLATES.some(template => template.id === current) ? current : 'ConstructionDroid';
+  const customOpt = document.createElement('option');
+  customOpt.value = CUSTOM_DROID_TEMPLATE_ID;
+  customOpt.textContent = 'Custom Droid';
+  select.appendChild(customOpt);
+  select.value = DROID_BUILD_TEMPLATES.some(template => template.id === current) || current === CUSTOM_DROID_TEMPLATE_ID ? current : 'ConstructionDroid';
 }
 
 function setDroidMode(mode) {
@@ -1695,20 +1770,20 @@ function resetLoadedMetadata() {
   currentLevelJson = null;
 }
 
-function makeDroidEntry(templateName, player, tileX, tileY, degrees) {
-  const preset = DROID_BUILD_TEMPLATES.find(item => item.id === templateName);
-  const template = templateDefs?.[templateName] || preset || { body: 'Body1REC', propulsion: 'wheeled01', weapon: 'DROID_CONSTRUCT', name: templateName };
-  return {
-    name: preset?.name || template.name || templateName,
-    template: templateName,
-    body: template.body,
-    propulsion: template.propulsion,
-    weapon: template.weapon || 'DROID_CONSTRUCT',
+function makeDroidEntry(design, player, tileX, tileY, degrees) {
+  const templateName = design?.id || 'ConstructionDroid';
+  const entry = {
+    name: design?.name || templateName,
+    body: design?.body || 'Body1REC',
+    propulsion: design?.propulsion || 'wheeled01',
+    weapon: design?.weapon || 'DROID_CONSTRUCT',
     startpos: Math.max(0, Math.min(10, parseInt(player, 10) || 0)),
     position: [Math.round((tileX + 0.5) * 128), Math.round((tileY + 0.5) * 128)],
     rotation: [0, degreesToWzAngle(degrees), 0],
     rotDeg: normalizeDegrees(degrees)
   };
+  if (templateName !== CUSTOM_DROID_TEMPLATE_ID) entry.template = templateName;
+  return entry;
 }
 
 function getDroidPieList(entry) {
@@ -2820,6 +2895,26 @@ const initDom = () => {
   });
   const droidPlayerSelect = document.getElementById('droidPlayerSelect');
   populateDroidTemplateSelect();
+  loadComponentDefs().then(() => populateDroidDesignerControls());
+  const droidTemplateSelect = document.getElementById('droidTemplateSelect');
+  if (droidTemplateSelect) {
+    droidTemplateSelect.addEventListener('change', () => {
+      const preset = DROID_BUILD_TEMPLATES.find(item => item.id === droidTemplateSelect.value);
+      if (preset) setDroidDesignerParts(preset);
+      else {
+        const design = getSelectedDroidDesign();
+        design.name = 'Custom Droid';
+        setDroidDesignerParts(design);
+      }
+    });
+  }
+  ['droidNameInput', 'droidBodySelect', 'droidPropulsionSelect', 'droidWeaponSelect'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', () => {
+      if (droidTemplateSelect) droidTemplateSelect.value = CUSTOM_DROID_TEMPLATE_ID;
+    });
+  });
   if (droidPlayerSelect && !droidPlayerSelect.options.length) {
     for (let i = 0; i <= 10; i++) {
       const opt = document.createElement('option');
@@ -3002,10 +3097,9 @@ function handleMapContextMenu(event) {
 async function placeDroidAtTile(tileX, tileY) {
   await loadComponentDefs();
   const playerSelect = document.getElementById('droidPlayerSelect');
-  const templateSelect = document.getElementById('droidTemplateSelect');
   const player = playerSelect ? playerSelect.value : 0;
-  const templateName = templateSelect ? templateSelect.value : 'ConstructionDroid';
-  const entry = makeDroidEntry(templateName, player, tileX, tileY, selectedDroidRotation);
+  const design = getSelectedDroidDesign();
+  const entry = makeDroidEntry(design, player, tileX, tileY, selectedDroidRotation);
   const pieList = getDroidPieList(entry);
   let group;
   if (pieList && pieList.length) {
