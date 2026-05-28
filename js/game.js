@@ -21,6 +21,14 @@ import { loadSensorDefs, getSensorModels } from "./sensors.js";
 import { buildDroidGroup } from "./droidGroup.js";
 
 let bodyDefs, propDefs, weaponDefs, templateDefs;
+const DROID_BUILD_TEMPLATES = [
+  { id: 'ConstructionDroid', name: 'Builder Truck', body: 'Body1REC', propulsion: 'wheeled01', weapon: 'DROID_CONSTRUCT' },
+  { id: 'ViperMGWheels', name: 'Viper MG Wheels', body: 'Body1REC', propulsion: 'wheeled01', weapon: 'MG1Mk1' },
+  { id: 'ViperCannonWheels', name: 'Viper Cannon Wheels', body: 'Body1REC', propulsion: 'wheeled01', weapon: 'Cannon1Mk1' },
+  { id: 'ViperRocketWheels', name: 'Viper Rocket Wheels', body: 'Body1REC', propulsion: 'wheeled01', weapon: 'Rocket-Pod' },
+  { id: 'CobraMGWheels', name: 'Cobra MG Wheels', body: 'Body5REC', propulsion: 'wheeled01', weapon: 'MG1Mk1' },
+  { id: 'CobraCannonWheels', name: 'Cobra Cannon Wheels', body: 'Body5REC', propulsion: 'wheeled01', weapon: 'Cannon1Mk1' }
+];
 async function loadComponentDefs() {
   if (bodyDefs && propDefs && weaponDefs && templateDefs) return;
   const base = (typeof window !== 'undefined' && window.PIES_BASE) ? window.PIES_BASE : 'pies/';
@@ -371,6 +379,20 @@ function updateDroidModeUI() {
   if (lastMouseEvent) updateHighlight(lastMouseEvent);
 }
 
+function populateDroidTemplateSelect() {
+  const select = document.getElementById('droidTemplateSelect');
+  if (!select) return;
+  const current = select.value || 'ConstructionDroid';
+  select.innerHTML = '';
+  DROID_BUILD_TEMPLATES.forEach(template => {
+    const opt = document.createElement('option');
+    opt.value = template.id;
+    opt.textContent = template.name;
+    select.appendChild(opt);
+  });
+  select.value = DROID_BUILD_TEMPLATES.some(template => template.id === current) ? current : 'ConstructionDroid';
+}
+
 function setDroidMode(mode) {
   droidMode = mode;
   clearStructurePlacementPreview();
@@ -437,6 +459,16 @@ function removeDroidGroup(group) {
   const entry = group.userData?.droidExport;
   if (entry) currentDroidEntries = currentDroidEntries.filter(item => item !== entry);
   objectsGroup.remove(group);
+  drawMap3D();
+  return true;
+}
+
+function addDroidGroup(group) {
+  if (!group || objectsGroup.children.includes(group)) return false;
+  const entry = group.userData?.droidExport;
+  if (entry && !currentDroidEntries.includes(entry)) currentDroidEntries.push(entry);
+  objectsGroup.add(group);
+  if (!scene.children.includes(objectsGroup)) scene.add(objectsGroup);
   drawMap3D();
   return true;
 }
@@ -1390,6 +1422,18 @@ function applyAction(action, mode) {
     } else {
       removeStructureGroup(action.group);
     }
+  } else if (action.type === 'droid') {
+    if (mode === 'undo') {
+      removeDroidGroup(action.group);
+    } else {
+      addDroidGroup(action.group);
+    }
+  } else if (action.type === 'droid-delete') {
+    if (mode === 'undo') {
+      addDroidGroup(action.group);
+    } else {
+      removeDroidGroup(action.group);
+    }
   }
 }
 
@@ -1652,9 +1696,10 @@ function resetLoadedMetadata() {
 }
 
 function makeDroidEntry(templateName, player, tileX, tileY, degrees) {
-  const template = templateDefs?.[templateName] || { body: 'Body1REC', propulsion: 'wheeled01', weapon: 'DROID_CONSTRUCT' };
+  const preset = DROID_BUILD_TEMPLATES.find(item => item.id === templateName);
+  const template = templateDefs?.[templateName] || preset || { body: 'Body1REC', propulsion: 'wheeled01', weapon: 'DROID_CONSTRUCT', name: templateName };
   return {
-    name: templateName === 'ConstructionDroid' ? 'Builder Truck' : templateName,
+    name: preset?.name || template.name || templateName,
     template: templateName,
     body: template.body,
     propulsion: template.propulsion,
@@ -2774,6 +2819,7 @@ const initDom = () => {
     clearHoveredDroid();
   });
   const droidPlayerSelect = document.getElementById('droidPlayerSelect');
+  populateDroidTemplateSelect();
   if (droidPlayerSelect && !droidPlayerSelect.options.length) {
     for (let i = 0; i <= 10; i++) {
       const opt = document.createElement('option');
@@ -2824,6 +2870,7 @@ const initDom = () => {
     droidViewDeleteBtn.addEventListener('click', () => {
       const group = selectedDroidGroup;
       if (group && removeDroidGroup(group)) {
+        pushUndo({ type: 'droid-delete', group });
         updateDroidInfo(null, 'No droid selected.');
         updateDroidModeUI();
       }
@@ -2982,7 +3029,8 @@ async function placeDroidAtTile(tileX, tileY) {
   objectsGroup.add(group);
   if (!scene.children.includes(objectsGroup)) scene.add(objectsGroup);
   drawMap3D();
-  setFileStatus('Placed builder truck for player ' + entry.startpos + '.');
+  setFileStatus('Placed ' + entry.name + ' for player ' + entry.startpos + '.');
+  return group;
 }
 
 function handleEditClick(event) {
@@ -3004,7 +3052,7 @@ function handleEditClick(event) {
     if (droidMode === 'view') {
       selectDroidGroup(group);
     } else if (droidMode === 'delete' && group) {
-      removeDroidGroup(group);
+      if (removeDroidGroup(group)) pushUndo({ type: 'droid-delete', group });
     }
     return;
   }
@@ -3129,7 +3177,9 @@ function handleEditClick(event) {
       updateHighlight(event);
     }).catch(() => {});
   } else if (activeTab === 'droids' && droidMode === 'build') {
-    placeDroidAtTile(tileX, tileY).catch(err => {
+    placeDroidAtTile(tileX, tileY).then(group => {
+      if (group) pushUndo({ type: 'droid', group });
+    }).catch(err => {
       console.error('Failed to place droid:', err);
       setFileStatus('Failed to place droid.');
     });
