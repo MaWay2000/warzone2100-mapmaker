@@ -558,6 +558,10 @@
           <label for="droidTemplateSelect" style="margin:0; display:block;">Droid:</label>
           <select id="droidTemplateSelect" style="width:100%; font-size:0.9rem;"></select>
         </div>
+        <label style="display:flex; align-items:center; gap:6px; margin:0 0 4px 0; font-size:0.85rem;">
+          <input type="checkbox" id="droidShowScavengers" style="margin:0;">
+          Show scavengers
+        </label>
         <div style="margin-bottom:4px;">
           <label for="droidNameInput" style="margin:0; display:block; font-size:0.85rem;">Name:</label>
           <input type="text" id="droidNameInput" value="Builder Truck" style="width:100%; box-sizing:border-box; font-size:0.85rem;">
@@ -643,7 +647,7 @@
   </div>
 
   <script type="module" src="js/jszip.min.js"></script>
-  <script type="module" src="js/game.js?v=droid-preview"></script>
+  <script type="module" src="js/game.js?v=droid-scavengers"></script>
 
 <script type="module">
     // Minimal UI bridge your game.js can use

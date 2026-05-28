@@ -30,6 +30,15 @@ const DROID_BUILD_TEMPLATES = [
   { id: 'CobraMGWheels', name: 'Cobra MG Wheels', body: 'Body5REC', propulsion: 'wheeled01', weapon: 'MG1Mk1' },
   { id: 'CobraCannonWheels', name: 'Cobra Cannon Wheels', body: 'Body5REC', propulsion: 'wheeled01', weapon: 'Cannon1Mk1' }
 ];
+const SCAVENGER_DROID_TEMPLATES = [
+  { id: 'ScavengerPersonMG', name: 'Scavenger MG', body: 'B1BaBaPerson01', propulsion: 'BaBaLegs', weapon: 'BabaMG' },
+  { id: 'ScavengerPersonCannon', name: 'Scavenger Cannon', body: 'B1BaBaPerson01', propulsion: 'BaBaLegs', weapon: 'BabaCannon' },
+  { id: 'ScavengerJeepMG', name: 'Scavenger Jeep MG', body: 'B2JeepBody', propulsion: 'BaBaProp', weapon: 'BabaJeepMG' },
+  { id: 'ScavengerJeepTwinMG', name: 'Scavenger Jeep Twin MG', body: 'B2JeepBody', propulsion: 'BaBaProp', weapon: 'BabaJeepTwinMG' },
+  { id: 'ScavengerBuggyMG', name: 'Scavenger Buggy MG', body: 'B3body-sml-buggy01', propulsion: 'BaBaProp', weapon: 'BabaBuggyMG' },
+  { id: 'ScavengerTrikeMG', name: 'Scavenger Trike MG', body: 'B4body-sml-trike01', propulsion: 'BaBaProp', weapon: 'BabaTrikeMG' },
+  { id: 'ScavengerRocketJeep', name: 'Scavenger Rocket Jeep', body: 'B2RKJeepBody', propulsion: 'BaBaProp', weapon: 'BabaRocket' }
+];
 async function loadComponentDefs() {
   if (bodyDefs && propDefs && weaponDefs && templateDefs) return;
   const base = (typeof window !== 'undefined' && window.PIES_BASE) ? window.PIES_BASE : 'pies/';
@@ -396,7 +405,7 @@ function populateComponentSelect(select, defs, filterFn, preferredIds = []) {
   const current = select.value;
   const preferred = new Set(preferredIds);
   const items = Object.entries(defs)
-    .filter(([id, def]) => filterFn(id, def))
+    .filter(([id, def]) => preferred.has(id) || filterFn(id, def))
     .sort((a, b) => {
       const ap = preferred.has(a[0]) ? 0 : 1;
       const bp = preferred.has(b[0]) ? 0 : 1;
@@ -425,6 +434,17 @@ function setDroidDesignerParts(design) {
   updateDroidPreview();
 }
 
+function getDroidTemplateList() {
+  const showScavengers = document.getElementById('droidShowScavengers')?.checked;
+  return showScavengers ? DROID_BUILD_TEMPLATES.concat(SCAVENGER_DROID_TEMPLATES) : DROID_BUILD_TEMPLATES;
+}
+
+function getDroidTemplateById(id) {
+  return getDroidTemplateList().find(item => item.id === id) ||
+    DROID_BUILD_TEMPLATES.find(item => item.id === id) ||
+    SCAVENGER_DROID_TEMPLATES.find(item => item.id === id);
+}
+
 function getSelectedDroidDesign() {
   const templateSelect = document.getElementById('droidTemplateSelect');
   const nameInput = document.getElementById('droidNameInput');
@@ -432,7 +452,7 @@ function getSelectedDroidDesign() {
   const propulsionSelect = document.getElementById('droidPropulsionSelect');
   const weaponSelect = document.getElementById('droidWeaponSelect');
   const templateId = templateSelect?.value || 'ConstructionDroid';
-  const preset = DROID_BUILD_TEMPLATES.find(item => item.id === templateId);
+  const preset = getDroidTemplateById(templateId);
   const body = bodySelect?.value || preset?.body || 'Body1REC';
   const propulsion = propulsionSelect?.value || preset?.propulsion || 'wheeled01';
   const weapon = weaponSelect?.value || preset?.weapon || 'DROID_CONSTRUCT';
@@ -449,11 +469,11 @@ function populateDroidDesignerControls() {
   const bodySelect = document.getElementById('droidBodySelect');
   const propulsionSelect = document.getElementById('droidPropulsionSelect');
   const weaponSelect = document.getElementById('droidWeaponSelect');
-  populateComponentSelect(bodySelect, bodyDefs, (id, def) => def?.model && (def.weaponSlots === undefined || def.weaponSlots > 0), ['Body1REC', 'Body5REC', 'Body4ABT']);
-  populateComponentSelect(propulsionSelect, propDefs, (id, def) => def?.model, ['wheeled01', 'HalfTrack', 'tracked01']);
-  populateComponentSelect(weaponSelect, weaponDefs, (id, def) => def?.model || def?.mountModel, ['DROID_CONSTRUCT', 'MG1Mk1', 'Cannon1Mk1', 'Rocket-Pod']);
+  populateComponentSelect(bodySelect, bodyDefs, (id, def) => def?.model && (def.weaponSlots === undefined || def.weaponSlots > 0), ['Body1REC', 'Body5REC', 'Body4ABT', 'B1BaBaPerson01', 'B2JeepBody', 'B2RKJeepBody', 'B3body-sml-buggy01', 'B4body-sml-trike01']);
+  populateComponentSelect(propulsionSelect, propDefs, (id, def) => def?.model, ['wheeled01', 'HalfTrack', 'tracked01', 'BaBaLegs', 'BaBaProp']);
+  populateComponentSelect(weaponSelect, weaponDefs, (id, def) => def?.model || def?.mountModel, ['DROID_CONSTRUCT', 'MG1Mk1', 'Cannon1Mk1', 'Rocket-Pod', 'BabaMG', 'BabaCannon', 'BabaJeepMG', 'BabaJeepTwinMG', 'BabaBuggyMG', 'BabaTrikeMG', 'BabaRocket']);
   const currentTemplate = document.getElementById('droidTemplateSelect')?.value || 'ConstructionDroid';
-  const preset = DROID_BUILD_TEMPLATES.find(item => item.id === currentTemplate) || DROID_BUILD_TEMPLATES[0];
+  const preset = getDroidTemplateById(currentTemplate) || DROID_BUILD_TEMPLATES[0];
   setDroidDesignerParts(preset);
 }
 
@@ -462,7 +482,8 @@ function populateDroidTemplateSelect() {
   if (!select) return;
   const current = select.value || 'ConstructionDroid';
   select.innerHTML = '';
-  DROID_BUILD_TEMPLATES.forEach(template => {
+  const templates = getDroidTemplateList();
+  templates.forEach(template => {
     const opt = document.createElement('option');
     opt.value = template.id;
     opt.textContent = template.name;
@@ -472,7 +493,7 @@ function populateDroidTemplateSelect() {
   customOpt.value = CUSTOM_DROID_TEMPLATE_ID;
   customOpt.textContent = 'Custom Droid';
   select.appendChild(customOpt);
-  select.value = DROID_BUILD_TEMPLATES.some(template => template.id === current) || current === CUSTOM_DROID_TEMPLATE_ID ? current : 'ConstructionDroid';
+  select.value = templates.some(template => template.id === current) || current === CUSTOM_DROID_TEMPLATE_ID ? current : 'ConstructionDroid';
 }
 
 function clearDroidPreviewScene() {
@@ -1848,7 +1869,7 @@ function makeDroidEntry(design, player, tileX, tileY, degrees) {
     rotation: [0, degreesToWzAngle(degrees), 0],
     rotDeg: normalizeDegrees(degrees)
   };
-  if (templateName !== CUSTOM_DROID_TEMPLATE_ID) entry.template = templateName;
+  if (templateName !== CUSTOM_DROID_TEMPLATE_ID && (!templateDefs || templateDefs[templateName])) entry.template = templateName;
   return entry;
 }
 
@@ -2965,13 +2986,22 @@ const initDom = () => {
   const droidTemplateSelect = document.getElementById('droidTemplateSelect');
   if (droidTemplateSelect) {
     droidTemplateSelect.addEventListener('change', () => {
-      const preset = DROID_BUILD_TEMPLATES.find(item => item.id === droidTemplateSelect.value);
+      const preset = getDroidTemplateById(droidTemplateSelect.value);
       if (preset) setDroidDesignerParts(preset);
       else {
         const design = getSelectedDroidDesign();
         design.name = 'Custom Droid';
         setDroidDesignerParts(design);
       }
+      updateDroidPreview();
+    });
+  }
+  const droidShowScavengers = document.getElementById('droidShowScavengers');
+  if (droidShowScavengers) {
+    droidShowScavengers.addEventListener('change', () => {
+      populateDroidTemplateSelect();
+      const preset = getDroidTemplateById(droidTemplateSelect?.value);
+      if (preset) setDroidDesignerParts(preset);
       updateDroidPreview();
     });
   }
