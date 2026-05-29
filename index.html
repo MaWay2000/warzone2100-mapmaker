@@ -604,18 +604,23 @@
         <ol style="margin:6px 0 10px 20px; padding:0;">
           <li><strong>Fix droid preview connectors.</strong> Attach body, propulsion, mount, and weapon models using PIE connector positions instead of stacking parts at origin.</li>
           <li><strong>Add missing-model warnings.</strong> Show a clear warning when a selected body, propulsion, or weapon has no visible preview model.</li>
+          <li><strong>Audit scavenger weapon models.</strong> List which scavenger weapons have no model/mountModel in local JSON and decide whether to show body-only, substitute a visual marker, or hide from preview.</li>
+          <li><strong>Handle scavenger propulsion preview.</strong> BaBaLegs and BaBaProp are valid gameplay propulsion IDs but do not have standalone PIE models, so preview should explain that instead of trying to load missing files.</li>
+          <li><strong>Audit PIE and texture paths.</strong> Check case-sensitive model and texture paths so GitHub Pages does not fail on files that work locally.</li>
           <li><strong>Check normal droids.</strong> Test Builder Truck, Viper MG Wheels, Viper Cannon Wheels, Viper Rocket Wheels, Cobra MG Wheels, and Cobra Cannon Wheels.</li>
           <li><strong>Check scavenger droids.</strong> Test all scavenger presets and mark which are preview-only body models because their weapons have no model file.</li>
-          <li><strong>Improve export validation.</strong> Warn when a player is missing Command Center or Builder Truck.</li>
-          <li><strong>Validate .gam metadata.</strong> Confirm player count, map type, and advanced-base data after structure/droid edits.</li>
+          <li><strong>Re-test export validation.</strong> Confirm warnings appear when a player is missing Command Center or Builder Truck.</li>
+          <li><strong>Validate .gam metadata.</strong> Confirm player count, map type, scroll size, tileset, and advanced-base data after structure/droid edits.</li>
           <li><strong>Warzone test export.</strong> Export a small .wz with one player, Command Center, Builder Truck, and one scavenger droid, then test it in Warzone.</li>
+          <li><strong>Compare preview vs Warzone.</strong> For each tested droid, note whether browser preview matches the real in-game model closely enough.</li>
           <li><strong>Update this list.</strong> Move fixed items to done and leave only real remaining risks.</li>
         </ol>
-        <div style="font-weight:bold;">Known risks</div>
+        <div style="font-weight:bold;">Known risks covered above</div>
         <ul style="margin:4px 0 0 18px; padding:0;">
           <li>Some scavenger weapons are valid game IDs but have no visible model entry in local JSON.</li>
           <li>Scavenger legs and wheels are gameplay propulsion IDs without standalone preview PIE models.</li>
-          <li>Browser preview can still differ from real Warzone until exported .wz files are tested in-game.</li>
+          <li>Browser preview can differ from real Warzone until exported .wz files are tested in-game.</li>
+          <li>Case-sensitive PIE/texture paths can fail on GitHub Pages even when local preview appears fine.</li>
         </ul>
       </div>
     </div>
@@ -671,7 +676,7 @@
   </div>
 
   <script type="module" src="js/jszip.min.js"></script>
-  <script type="module" src="js/game.js?v=todo-list"></script>
+  <script type="module" src="js/game.js?v=todo-risk-audit"></script>
 
 <script type="module">
     // Minimal UI bridge your game.js can use
