@@ -39,6 +39,9 @@ const SCAVENGER_DROID_TEMPLATES = [
   { id: 'ScavengerTrikeMG', name: 'Scavenger Trike MG', body: 'B4body-sml-trike01', propulsion: 'BaBaProp', weapon: 'BabaTrikeMG' },
   { id: 'ScavengerRocketJeep', name: 'Scavenger Rocket Jeep', body: 'B2RKJeepBody', propulsion: 'BaBaProp', weapon: 'BabaRocket' }
 ];
+const SCAVENGER_BODY_IDS = new Set(SCAVENGER_DROID_TEMPLATES.map(item => item.body));
+const SCAVENGER_PROPULSION_IDS = new Set(SCAVENGER_DROID_TEMPLATES.map(item => item.propulsion));
+const SCAVENGER_WEAPON_IDS = new Set(SCAVENGER_DROID_TEMPLATES.map(item => item.weapon));
 async function loadComponentDefs() {
   if (bodyDefs && propDefs && weaponDefs && templateDefs) return;
   const base = (typeof window !== 'undefined' && window.PIES_BASE) ? window.PIES_BASE : 'pies/';
@@ -469,9 +472,31 @@ function populateDroidDesignerControls() {
   const bodySelect = document.getElementById('droidBodySelect');
   const propulsionSelect = document.getElementById('droidPropulsionSelect');
   const weaponSelect = document.getElementById('droidWeaponSelect');
-  populateComponentSelect(bodySelect, bodyDefs, (id, def) => def?.model && (def.weaponSlots === undefined || def.weaponSlots > 0), ['Body1REC', 'Body5REC', 'Body4ABT', 'B1BaBaPerson01', 'B2JeepBody', 'B2RKJeepBody', 'B3body-sml-buggy01', 'B4body-sml-trike01']);
-  populateComponentSelect(propulsionSelect, propDefs, (id, def) => def?.model, ['wheeled01', 'HalfTrack', 'tracked01', 'BaBaLegs', 'BaBaProp']);
-  populateComponentSelect(weaponSelect, weaponDefs, (id, def) => def?.model || def?.mountModel, ['DROID_CONSTRUCT', 'MG1Mk1', 'Cannon1Mk1', 'Rocket-Pod', 'BabaMG', 'BabaCannon', 'BabaJeepMG', 'BabaJeepTwinMG', 'BabaBuggyMG', 'BabaTrikeMG', 'BabaRocket']);
+  const showScavengers = document.getElementById('droidShowScavengers')?.checked;
+  const normalBodies = ['Body1REC', 'Body5REC', 'Body4ABT'];
+  const normalPropulsions = ['wheeled01', 'HalfTrack', 'tracked01'];
+  const normalWeapons = ['DROID_CONSTRUCT', 'MG1Mk1', 'Cannon1Mk1', 'Rocket-Pod'];
+  const scavengerBodies = Array.from(SCAVENGER_BODY_IDS);
+  const scavengerPropulsions = Array.from(SCAVENGER_PROPULSION_IDS);
+  const scavengerWeapons = Array.from(SCAVENGER_WEAPON_IDS);
+  populateComponentSelect(
+    bodySelect,
+    bodyDefs,
+    (id, def) => def?.model && (def.weaponSlots === undefined || def.weaponSlots > 0) && (showScavengers || (def?.class !== 'Babas' && !SCAVENGER_BODY_IDS.has(id))),
+    showScavengers ? normalBodies.concat(scavengerBodies) : normalBodies
+  );
+  populateComponentSelect(
+    propulsionSelect,
+    propDefs,
+    (id, def) => def?.model && (showScavengers || (!SCAVENGER_PROPULSION_IDS.has(id) && !String(id).toLowerCase().startsWith('baba'))),
+    showScavengers ? normalPropulsions.concat(scavengerPropulsions) : normalPropulsions
+  );
+  populateComponentSelect(
+    weaponSelect,
+    weaponDefs,
+    (id, def) => (def?.model || def?.mountModel) && (showScavengers || (!SCAVENGER_WEAPON_IDS.has(id) && !String(id).toLowerCase().startsWith('baba'))),
+    showScavengers ? normalWeapons.concat(scavengerWeapons) : normalWeapons
+  );
   const currentTemplate = document.getElementById('droidTemplateSelect')?.value || 'ConstructionDroid';
   const preset = getDroidTemplateById(currentTemplate) || DROID_BUILD_TEMPLATES[0];
   setDroidDesignerParts(preset);
@@ -3000,8 +3025,7 @@ const initDom = () => {
   if (droidShowScavengers) {
     droidShowScavengers.addEventListener('change', () => {
       populateDroidTemplateSelect();
-      const preset = getDroidTemplateById(droidTemplateSelect?.value);
-      if (preset) setDroidDesignerParts(preset);
+      populateDroidDesignerControls();
       updateDroidPreview();
     });
   }
