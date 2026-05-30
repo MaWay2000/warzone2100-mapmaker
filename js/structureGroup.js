@@ -54,6 +54,7 @@ export async function buildStructureGroup(def, rotation, sizeX, sizeY, scaleOver
       baseMesh.position.set(-cX, -bb2.min.y, -cZ);
       group.add(baseMesh);
 
+      const alignExtrasByOrigin = !!def.alignPiesByOrigin;
       for (const extra of def.pies.slice(1)) {
         try {
           const extraGeo = await loadPieGeometry(extra).then(g => g.clone());
@@ -75,8 +76,10 @@ export async function buildStructureGroup(def, rotation, sizeX, sizeY, scaleOver
             extraMat = new THREE.MeshLambertMaterial({ color: 0x8888ff, transparent: opacityOverride !== null, opacity: opacityOverride !== null ? opacityOverride : 1 });
           }
           const extraMesh = new THREE.Mesh(extraGeo, extraMat);
-          // Position extras so their lowest point sits on the floor as well.
-          extraMesh.position.set(-ecX, -tb.min.y, -ecZ);
+          // Some structures have a separate floor/base PIE and a main PIE
+          // authored in the same coordinate space. Keep those offsets.
+          if (alignExtrasByOrigin) extraMesh.position.set(-cX, -tb.min.y, -cZ);
+          else extraMesh.position.set(-ecX, -tb.min.y, -ecZ);
           group.add(extraMesh);
         } catch (_) {}
       }

@@ -1271,6 +1271,7 @@ async function loadStructureDefs() {
           sizeX: entry.width,
           sizeY: entry.breadth,
           pies,
+          alignPiesByOrigin: !!entry.baseModel,
           type: entry.type || '',
           strength: entry.strength || '',
           combinesWithWall: !!entry.combinesWithWall,
