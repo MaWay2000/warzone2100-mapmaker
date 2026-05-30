@@ -4332,6 +4332,33 @@ async function addLoadedStructure(def, entry, rot, rotDeg, tileX, tileY, sizeX, 
   return group;
 }
 
+function foldLegacyStructureModules(entries) {
+  const absorbed = new Set();
+  entries.forEach((entry, index) => {
+    const moduleDef = getStructureDefById(entry?.name);
+    const moduleRule = getModuleParentTypes(moduleDef);
+    if (!moduleRule) return;
+    const modulePos = entry.position;
+    if (!Array.isArray(modulePos) || modulePos.length < 2) return;
+    const parentIndex = entries.findIndex((candidate, candidateIndex) => {
+      if (candidateIndex === index || absorbed.has(candidateIndex)) return false;
+      const parentDef = getStructureDefById(candidate?.name);
+      const parentType = String(parentDef?.type || '').toLowerCase();
+      const parentPos = candidate?.position;
+      return moduleRule.parents.has(parentType) &&
+        Array.isArray(parentPos) &&
+        parentPos[0] === modulePos[0] &&
+        parentPos[1] === modulePos[1];
+    });
+    if (parentIndex < 0) return;
+    const parent = entries[parentIndex];
+    const currentCount = Math.max(0, parseInt(parent.modules, 10) || 0);
+    parent.modules = Math.min(moduleRule.max, currentCount + 1);
+    absorbed.add(index);
+  });
+  return entries.filter((_, index) => !absorbed.has(index));
+}
+
 async function loadStructuresFromZip(zip) {
   clearMapObjects();
   const structName = Object.keys(zip.files).find(fn => fn.toLowerCase().endsWith('struct.json') && !zip.files[fn].dir);
@@ -4346,7 +4373,8 @@ async function loadStructuresFromZip(zip) {
     if (!STRUCTURE_DEFS.length) {
       try { await loadStructureDefs(); } catch (e) {}
     }
-    const entries = Array.isArray(data) ? data : Array.isArray(data.structures) ? data.structures : Object.values(data);
+    const rawEntries = Array.isArray(data) ? data : Array.isArray(data.structures) ? data.structures : Object.values(data);
+    const entries = foldLegacyStructureModules(rawEntries);
     const promises = entries.map(entry => {
       const name = typeof entry.name === 'string' ? entry.name.toLowerCase() : null;
       if (!name) return Promise.resolve();
