@@ -84,7 +84,14 @@ export async function buildStructureGroup(def, rotation, sizeX, sizeY, scaleOver
         } catch (_) {}
       }
 
-      connRel = { x: 0, y: bb2.max.y - minYVal, z: 0 };
+      const connector = def.usePieConnector && baseGeo.userData.connectors?.[0];
+      connRel = connector
+        ? {
+            x: connector[0] * scl - cX,
+            y: connector[2] * scl - minYVal,
+            z: connector[1] * scl - cZ
+          }
+        : { x: 0, y: bb2.max.y - minYVal, z: 0 };
     } catch (e) {
       console.warn('Failed to build structure from pies:', e);
     }
