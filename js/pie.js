@@ -6,6 +6,7 @@ export function parsePie(data) {
   const points = [];
   const triIndices = [];
   const triUVs = [];
+  const connectors = [];
   let textureName = null;
   let texWidth = 256;
   let texHeight = 256;
@@ -48,6 +49,13 @@ export function parsePie(data) {
           triUVs.push([uvA, uvB, uvC]);
         }
       }
+    } else if (line.startsWith('CONNECTORS')) {
+      const count = parseInt(line.split(/\s+/)[1], 10);
+      for (let j = 0; j < count; j++) {
+        i++;
+        const coords = lines[i].trim().split(/\s+/).map(parseFloat);
+        if (coords.length >= 3) connectors.push([coords[0] / 128, coords[1] / 128, coords[2] / 128]);
+      }
     }
     i++;
   }
@@ -70,6 +78,7 @@ export function parsePie(data) {
     geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
     if (textureName) geo.userData.textureName = textureName;
   }
+  geo.userData.connectors = connectors;
   geo.computeVertexNormals();
   return geo;
 }

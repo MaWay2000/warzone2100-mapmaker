@@ -602,7 +602,7 @@
       <div class="panel-box" style="font-size:0.82rem; line-height:1.35;">
         <div class="show-hide-title">Todo list</div>
         <ol style="margin:6px 0 10px 20px; padding:0;">
-          <li><strong>Fix droid preview connectors.</strong> Attach body, propulsion, mount, and weapon models using PIE connector positions instead of stacking parts at origin.</li>
+          <li><strong>Fix droid preview connectors.</strong> Initial pass done: PIE connectors are parsed and weapon/mount parts attach to the body connector. Next: verify against Warzone and refine any bad offsets.</li>
           <li><strong>Add missing-model warnings.</strong> Show a clear warning when a selected body, propulsion, or weapon has no visible preview model.</li>
           <li><strong>Audit scavenger weapon models.</strong> List which scavenger weapons have no model/mountModel in local JSON and decide whether to show body-only, substitute a visual marker, or hide from preview.</li>
           <li><strong>Handle scavenger propulsion preview.</strong> BaBaLegs and BaBaProp are valid gameplay propulsion IDs but do not have standalone PIE models, so preview should explain that instead of trying to load missing files.</li>
@@ -676,7 +676,7 @@
   </div>
 
   <script type="module" src="js/jszip.min.js"></script>
-  <script type="module" src="js/game.js?v=droid-scavenger-split"></script>
+  <script type="module" src="js/game.js?v=droid-connectors"></script>
 
 <script type="module">
     // Minimal UI bridge your game.js can use

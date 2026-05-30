@@ -1910,10 +1910,11 @@ function getDroidPieList(entry) {
     if (name.includes('/')) return name;
     return prefix + name;
   };
-  const addPart = (val, prefix) => {
+  const addRolePart = (role, val, prefix) => {
     if (!val) return;
-    if (Array.isArray(val)) val.forEach(v => parts.push(toPath(v, prefix)));
-    else parts.push(toPath(val, prefix));
+    const addOne = v => parts.push({ role, path: toPath(v, prefix) });
+    if (Array.isArray(val)) val.forEach(addOne);
+    else addOne(val);
   };
   const addWeapon = val => {
     if (!val) return;
@@ -1921,30 +1922,30 @@ function getDroidPieList(entry) {
     if (wd) {
       const modelPath = wd.model && toPath(wd.model, 'components/weapons/');
       const mountPath = wd.mountModel && toPath(wd.mountModel, 'components/weapons/');
-      if (modelPath) parts.push(modelPath);
-      if (mountPath && mountPath !== modelPath) parts.push(mountPath);
+      if (mountPath) parts.push({ role: 'mount', path: mountPath });
+      if (modelPath && modelPath !== mountPath) parts.push({ role: 'weapon', path: modelPath });
     } else {
-      addPart(val, 'components/weapons/');
+      addRolePart('weapon', val, 'components/weapons/');
     }
   };
   const bodyId = entry.body;
   const propId = entry.propulsion;
   if (bodyId) {
     const bd = bodyDefs && bodyDefs[bodyId];
-    if (bd && bd.model) addPart(bd.model, 'components/bodies/');
-    else addPart(bodyId, 'components/bodies/');
+    if (bd && bd.model) addRolePart('body', bd.model, 'components/bodies/');
+    else addRolePart('body', bodyId, 'components/bodies/');
     if (bd && bd.propulsionExtraModels && propId) {
       const extra = bd.propulsionExtraModels[propId];
       if (extra) {
-        if (typeof extra === 'string') addPart(extra, 'components/prop/');
-        else Object.values(extra).forEach(v => addPart(v, 'components/prop/'));
+        if (typeof extra === 'string') addRolePart('propulsion', extra, 'components/prop/');
+        else Object.values(extra).forEach(v => addRolePart('propulsion', v, 'components/prop/'));
       }
     }
   }
   if (propId) {
     const pd = propDefs && propDefs[propId];
-    if (pd && pd.model) addPart(pd.model, 'components/prop/');
-    else addPart(propId, 'components/prop/');
+    if (pd && pd.model) addRolePart('propulsion', pd.model, 'components/prop/');
+    else addRolePart('propulsion', propId, 'components/prop/');
   }
   const weapons = entry.weapon || entry.weapons;
   if (Array.isArray(weapons)) weapons.forEach(addWeapon);
@@ -4277,59 +4278,7 @@ async function loadDroidsFromZip(zip) {
       // Lift droids slightly above the terrain to avoid z-fighting
       const h = (mapHeights?.[tileY]?.[tileX] ?? 0) * HEIGHT_SCALE + 0.07;
       const yaw = (entry.rotation?.[1] ?? 0) * (2 * Math.PI / 65536);
-      const pieList = (() => {
-        if (Array.isArray(entry.pies)) return entry.pies;
-        if (Array.isArray(entry.models)) return entry.models;
-        if (entry.pie) return [entry.pie];
-        if (entry.model) return [entry.model];
-        const parts = [];
-        const toPath = (val, prefix = '') => {
-          let name = String(val);
-          if (!name.toLowerCase().endsWith('.pie')) name += '.pie';
-          if (name.includes('/')) return name;
-          return prefix + name;
-        };
-        const addPart = (val, prefix) => {
-          if (!val) return;
-          if (Array.isArray(val)) val.forEach(v => parts.push(toPath(v, prefix)));
-          else parts.push(toPath(val, prefix));
-        };
-        const addWeapon = val => {
-          if (!val) return;
-          const wd = weaponDefs && weaponDefs[val];
-          if (wd) {
-            const modelPath = wd.model && toPath(wd.model, 'components/weapons/');
-            const mountPath = wd.mountModel && toPath(wd.mountModel, 'components/weapons/');
-            if (modelPath) parts.push(modelPath);
-            if (mountPath && mountPath !== modelPath) parts.push(mountPath);
-          } else {
-            addPart(val, 'components/weapons/');
-          }
-        };
-        const bodyId = entry.body;
-        const propId = entry.propulsion;
-        if (bodyId) {
-          const bd = bodyDefs && bodyDefs[bodyId];
-          if (bd && bd.model) addPart(bd.model, 'components/bodies/');
-          else addPart(bodyId, 'components/bodies/');
-          if (bd && bd.propulsionExtraModels && propId) {
-            const extra = bd.propulsionExtraModels[propId];
-            if (extra) {
-              if (typeof extra === 'string') addPart(extra, 'components/prop/');
-              else Object.values(extra).forEach(v => addPart(v, 'components/prop/'));
-            }
-          }
-        }
-        if (propId) {
-          const pd = propDefs && propDefs[propId];
-          if (pd && pd.model) addPart(pd.model, 'components/prop/');
-          else addPart(propId, 'components/prop/');
-        }
-        const weapons = entry.weapon || entry.weapons;
-        if (Array.isArray(weapons)) weapons.forEach(addWeapon);
-        else addWeapon(weapons);
-        return parts.length ? parts : null;
-      })();
+      const pieList = getDroidPieList(entry);
       if (pieList && pieList.length) {
         try {
           const group = await buildDroidGroup(pieList);
