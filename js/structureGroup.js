@@ -141,9 +141,6 @@ export async function buildStructureGroup(def, rotation, sizeX, sizeY, scaleOver
       attGeo.scale(scl, scl, scl);
       attGeo.computeBoundingBox();
       const tb = attGeo.boundingBox;
-      const tcX = (tb.min.x + tb.max.x) / 2;
-      const tcZ = (tb.min.z + tb.max.z) / 2;
-      const tMinY = tb.min.y;
       let tMat;
       if (attGeo.userData && attGeo.userData.textureName) {
         const tl = new THREE.TextureLoader();
@@ -157,11 +154,14 @@ export async function buildStructureGroup(def, rotation, sizeX, sizeY, scaleOver
       }
       const tMesh = new THREE.Mesh(attGeo, tMat);
       if (connRel) {
-        const xPos = connRel.x - tcX;
-        const yPos = connRel.y - tMinY;
-        const zPos = connRel.z - tcZ;
-        tMesh.position.set(xPos, yPos, zPos);
+        // Structure weapon and sensor PIEs are authored relative to the
+        // structure connector. Preserve those local offsets so mounts and
+        // barrels remain assembled as intended.
+        tMesh.position.set(connRel.x, connRel.y, connRel.z);
       } else {
+        const tcX = (tb.min.x + tb.max.x) / 2;
+        const tcZ = (tb.min.z + tb.max.z) / 2;
+        const tMinY = tb.min.y;
         tMesh.position.set(-tcX, offYVal - tMinY, -tcZ);
         offYVal += (tb.max.y - tb.min.y);
       }
