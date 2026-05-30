@@ -8,16 +8,18 @@ export function parsePie(data) {
   const triUVs = [];
   const connectors = [];
   let textureName = null;
-  let texWidth = 256;
-  let texHeight = 256;
+  let texWidth = null;
+  let texHeight = null;
   while (i < lines.length) {
     const line = lines[i].trim();
     if (line.startsWith('TEXTURE')) {
       const parts = line.split(/\s+/);
       textureName = parts[2] || null;
       if (parts.length >= 5) {
-        texWidth = parseInt(parts[3], 10) || 256;
-        texHeight = parseInt(parts[4], 10) || 256;
+        const w = parseInt(parts[3], 10);
+        const h = parseInt(parts[4], 10);
+        texWidth = w > 0 ? w : null;
+        texHeight = h > 0 ? h : null;
       }
     } else if (line.startsWith('POINTS')) {
       const parts = line.split(/\s+/);
@@ -61,14 +63,19 @@ export function parsePie(data) {
   }
   const positions = [];
   const uvs = [];
+  const normalizeUv = (value, size) => {
+    if (size) return value / size;
+    if (Math.abs(value) <= 1) return value;
+    return value / 256;
+  };
   triIndices.forEach((face, idx) => {
     const uvSet = triUVs[idx];
     for (let j = 0; j < 3; j++) {
       const p = points[face[j]];
       positions.push(p[0], p[1], p[2]);
       const uv = uvSet[j];
-      const u = (uv[0] / texWidth);
-      const v = 1 - (uv[1] / texHeight);
+      const u = normalizeUv(uv[0], texWidth);
+      const v = 1 - normalizeUv(uv[1], texHeight);
       uvs.push(u, v);
     }
   });
