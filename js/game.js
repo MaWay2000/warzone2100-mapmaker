@@ -1362,6 +1362,10 @@ function categorizeStructure(def) {
   const type = (def.type || '').toLowerCase();
   const strength = (def.strength || '').toLowerCase();
 
+  if (ALLOWED_BUNKER_IDS.has(id)) {
+    return 'Bunkers';
+  }
+
   if (
     UNAVAILABLE_STRUCTURE_IDS.has(id) ||
     name.includes('scavenger') ||
