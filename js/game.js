@@ -1343,7 +1343,6 @@ async function loadStructureDefs() {
           baseModel: entry.baseModel || null,
           moduleStageModels: moduleStageModels.length > 1 ? moduleStageModels : [],
           turretPieces,
-          usePieConnector: entry.id === 'A0LasSatCommand',
           alignPiesByOrigin: !!entry.baseModel,
           type: entry.type || '',
           strength: entry.strength || '',

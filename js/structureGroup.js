@@ -84,7 +84,7 @@ export async function buildStructureGroup(def, rotation, sizeX, sizeY, scaleOver
         } catch (_) {}
       }
 
-      const connector = def.usePieConnector && baseGeo.userData.connectors?.[0];
+      const connector = baseGeo.userData.connectors?.[0];
       connRel = connector
         ? {
             x: connector[0] * scl - cX,
