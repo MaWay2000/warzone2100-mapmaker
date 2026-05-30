@@ -680,6 +680,10 @@ function describeStructureGroup(group) {
   if (def.categoryName || def.category !== undefined) lines.push('Type: ' + (def.categoryName || STRUCTURE_CATEGORY_NAMES[def.category] || 'unknown'));
   lines.push('Tile: ' + tileX + ', ' + tileY);
   if (data.sizeX && data.sizeY) lines.push('Size: ' + data.sizeX + 'x' + data.sizeY);
+  const moduleCount = getStructureModuleCount(group);
+  if (def.moduleStageModels?.length || moduleCount > 0) {
+    lines.push('Modules: ' + moduleCount + '/' + Math.max(0, (def.moduleStageModels?.length || 1) - 1));
+  }
   lines.push('Rotation: ' + getStructureRotationDegrees(group) + ' deg');
   return lines.join('\n');
 }
@@ -851,6 +855,23 @@ function removeStructureGroup(group) {
   return true;
 }
 
+function replaceStructureGroup(oldGroup, newGroup) {
+  if (!oldGroup || !newGroup || !objectsGroup.children.includes(oldGroup)) return false;
+  const index = objectsGroup.children.indexOf(oldGroup);
+  if (selectedStructureGroup === oldGroup) clearSelectedStructure();
+  if (hoveredStructureGroup === oldGroup) clearHoveredStructure();
+  objectsGroup.remove(oldGroup);
+  objectsGroup.add(newGroup);
+  const newIndex = objectsGroup.children.indexOf(newGroup);
+  if (index >= 0 && newIndex >= 0 && index !== newIndex) {
+    objectsGroup.children.splice(newIndex, 1);
+    objectsGroup.children.splice(index, 0, newGroup);
+  }
+  if (!scene.children.includes(objectsGroup)) scene.add(objectsGroup);
+  drawMap3D();
+  return true;
+}
+
 function getStructureDefById(id) {
   const key = String(id || '').toLowerCase();
   return STRUCTURE_DEFS.find(def => String(def.id || '').toLowerCase() === key) || null;
@@ -858,6 +879,35 @@ function getStructureDefById(id) {
 
 function getStructureGroupDef(group) {
   return getStructureDefById(group?.userData?.structureExport?.name);
+}
+
+function getStructureModuleCount(group) {
+  const data = group?.userData?.structureExport || {};
+  const source = data.sourceEntry || {};
+  const raw = data.modules ?? source.modules ?? 0;
+  const count = parseInt(raw, 10);
+  return Number.isFinite(count) ? Math.max(0, count) : 0;
+}
+
+function setStructureModuleCount(group, count) {
+  if (!group?.userData?.structureExport) return;
+  const nextCount = Math.max(0, parseInt(count, 10) || 0);
+  const data = group.userData.structureExport;
+  data.modules = nextCount;
+  if (data.sourceEntry && typeof data.sourceEntry === 'object') {
+    if (nextCount > 0) data.sourceEntry.modules = nextCount;
+    else delete data.sourceEntry.modules;
+  }
+}
+
+function getStructureRenderDef(def, moduleCount = 0) {
+  if (!def?.moduleStageModels?.length) return def;
+  const stage = Math.max(0, Math.min(def.moduleStageModels.length - 1, parseInt(moduleCount, 10) || 0));
+  const pies = [];
+  if (def.baseModel) pies.push(def.baseModel);
+  pies.push(def.moduleStageModels[stage]);
+  if (def.turretPieces?.length) pies.push(...def.turretPieces);
+  return { ...def, pies };
 }
 
 function getStructureFootprint(group) {
@@ -896,6 +946,19 @@ function getModuleDefForParent(def) {
   return null;
 }
 
+function findModuleParentForPlacement(def, target) {
+  const moduleRule = getModuleParentTypes(def);
+  if (!moduleRule) return null;
+  for (const group of objectsGroup.children) {
+    const parentDef = getStructureGroupDef(group);
+    const type = String(parentDef?.type || '').toLowerCase();
+    if (!moduleRule.parents.has(type)) continue;
+    const footprint = getStructureFootprint(group);
+    if (footprint && footprintsMatch(target, footprint)) return group;
+  }
+  return null;
+}
+
 function getStructurePlacementValidity(def, tileX, tileY, sizeX, sizeY) {
   const target = { x: tileX, y: tileY, sizeX, sizeY };
   if (tileX < 0 || tileY < 0 || tileX + sizeX > mapW || tileY + sizeY > mapH) {
@@ -917,12 +980,17 @@ function getStructurePlacementValidity(def, tileX, tileY, sizeX, sizeY) {
 
   let foundParent = false;
   let existingModules = 0;
+  let parentGroup = null;
   for (const item of overlaps) {
     const type = String(item.def?.type || '').toLowerCase();
     const id = String(item.def?.id || '').toLowerCase();
     const isSameModule = id && id === String(def.id || '').toLowerCase();
     const isMatchingParent = moduleRule.parents.has(type) && footprintsMatch(target, item.footprint);
-    foundParent = foundParent || isMatchingParent;
+    if (isMatchingParent) {
+      foundParent = true;
+      parentGroup = item.group;
+      existingModules = Math.max(existingModules, getStructureModuleCount(item.group));
+    }
     if (isSameModule && footprintsMatch(target, item.footprint)) existingModules++;
     if (!isMatchingParent && !isSameModule) {
       return { valid: false, reason: 'Module must be placed on a matching structure.' };
@@ -932,7 +1000,7 @@ function getStructurePlacementValidity(def, tileX, tileY, sizeX, sizeY) {
   if (existingModules >= moduleRule.max) {
     return { valid: false, reason: 'This structure already has the maximum number of modules.' };
   }
-  return foundParent ? { valid: true } : { valid: false, reason: 'Module must be placed on a matching structure.' };
+  return foundParent ? { valid: true, parentGroup } : { valid: false, reason: 'Module must be placed on a matching structure.' };
 }
 
 function tintPlacementPreview(group, valid) {
@@ -1243,13 +1311,17 @@ async function loadStructureDefs() {
           ? entry.structureModel
           : (entry.structureModel ? [entry.structureModel] : []);
         const nonModules = models.filter(m => !/module/i.test(m));
+        const turretPieces = nonModules
+          .slice(1)
+          .filter(m => /^tr/i.test(m));
+        const moduleStageModels = nonModules.filter(m => !/^tr/i.test(m));
         if (nonModules.length) {
           // Include the optional floor/base model first so the structure
           // sits on top of it, then add the main building geometry.
           if (entry.baseModel) {
             pies.push(entry.baseModel);
           }
-          pies.push(nonModules[0]);
+          pies.push(moduleStageModels[0] || nonModules[0]);
 
           // Some defensive structures, such as guard towers, list an
           // additional piece after the main building for the weapon mount
@@ -1257,9 +1329,6 @@ async function loadStructureDefs() {
           // which caused weapons to float above the tower. Append any
           // subsequent non-module models that look like turret pieces so
           // the weapon sits on the intended extra box.
-          const turretPieces = nonModules
-            .slice(1)
-            .filter(m => /^tr/i.test(m));
           pies.push(...turretPieces);
         } else if (entry.baseModel) {
           pies.push(entry.baseModel);
@@ -1271,6 +1340,9 @@ async function loadStructureDefs() {
           sizeX: entry.width,
           sizeY: entry.breadth,
           pies,
+          baseModel: entry.baseModel || null,
+          moduleStageModels: moduleStageModels.length > 1 ? moduleStageModels : [],
+          turretPieces,
           alignPiesByOrigin: !!entry.baseModel,
           type: entry.type || '',
           strength: entry.strength || '',
@@ -1602,6 +1674,9 @@ function applyAction(action, mode) {
       if (!scene.children.includes(objectsGroup)) scene.add(objectsGroup);
       drawMap3D();
     }
+  } else if (action.type === 'structure-replace') {
+    if (mode === 'undo') replaceStructureGroup(action.newGroup, action.oldGroup);
+    else replaceStructureGroup(action.oldGroup, action.newGroup);
   } else if (action.type === 'structure-delete') {
     if (mode === 'undo') {
       objectsGroup.add(action.group);
@@ -2000,6 +2075,7 @@ async function updateGammaMetadata(zip, base) {
 
 function markStructureForExport(group, def, rot, sizeX, sizeY, sourceEntry = null, style = currentStructJsonStyle) {
   if (!group || !def) return;
+  const moduleCount = Math.max(0, parseInt(sourceEntry?.modules, 10) || 0);
   group.userData.structureExport = {
     name: def.id,
     rot: rot || 0,
@@ -2007,6 +2083,7 @@ function markStructureForExport(group, def, rot, sizeX, sizeY, sourceEntry = nul
     sizeX: sizeX || def.sizeX || 1,
     sizeY: sizeY || def.sizeY || 1,
     player: sourceEntry?.player ?? sourceEntry?.startpos ?? 0,
+    modules: moduleCount,
     sourceEntry,
     style
   };
@@ -2035,6 +2112,9 @@ function getStructureExportEntry(group, style, id) {
   const player = getStructurePlayer(group);
   if (base.player !== undefined) base.player = player;
   else base.startpos = player;
+  const moduleCount = getStructureModuleCount(group);
+  if (moduleCount > 0) base.modules = moduleCount;
+  else delete base.modules;
   return base;
 }
 
@@ -2085,6 +2165,12 @@ function validateStructureOverlaps(groups, errors) {
   for (let i = 0; i < footprints.length; i++) {
     const a = footprints[i];
     const moduleRule = getModuleParentTypes(a.def);
+    const parentModuleDef = getModuleDefForParent(a.def);
+    const parentModuleRule = getModuleParentTypes(parentModuleDef);
+    const parentModuleCount = getStructureModuleCount(a.group);
+    if (parentModuleRule && parentModuleCount > parentModuleRule.max) {
+      errors.push(getStructureLabel(a.group, a.index) + ' exceeds module limit.');
+    }
     if (moduleRule) {
       const sameTileItems = footprints.filter(item => footprintsMatch(item.footprint, a.footprint));
       const parent = sameTileItems.find(item => {
@@ -3280,6 +3366,46 @@ async function placeDroidAtTile(tileX, tileY) {
   return group;
 }
 
+function getMinTerrainHeight(tileX, tileY, sizeX, sizeY) {
+  let minH = Infinity;
+  for (let dy = 0; dy < sizeY; dy++) {
+    for (let dx = 0; dx < sizeX; dx++) {
+      const tx = tileX + dx;
+      const ty = tileY + dy;
+      if (tx < 0 || ty < 0 || tx >= mapW || ty >= mapH) continue;
+      const h = mapHeights[ty][tx] * HEIGHT_SCALE;
+      if (h < minH) minH = h;
+    }
+  }
+  return isFinite(minH) ? minH : 0;
+}
+
+async function applyStructureModulePlacement(moduleDef, parentGroup, tileX, tileY, sizeX, sizeY) {
+  const parentDef = getStructureGroupDef(parentGroup);
+  const data = parentGroup?.userData?.structureExport || {};
+  if (!parentDef || !data) return null;
+  const nextCount = getStructureModuleCount(parentGroup) + 1;
+  const rot = data.rot || 0;
+  const rotDeg = getStructureRotationDegrees(parentGroup);
+  const renderDef = getStructureRenderDef(parentDef, nextCount);
+  const newGroup = await buildStructureGroup(renderDef, rot, sizeX, sizeY);
+  const minH = getMinTerrainHeight(tileX, tileY, sizeX, sizeY);
+  newGroup.position.copy(getStructurePlacementPosition(newGroup, tileX, tileY, sizeX, sizeY, minH));
+  const sourceEntry = data.sourceEntry && typeof data.sourceEntry === 'object'
+    ? { ...data.sourceEntry, modules: nextCount }
+    : { modules: nextCount };
+  markStructureForExport(newGroup, parentDef, rot, sizeX, sizeY, sourceEntry, data.style || currentStructJsonStyle);
+  setStructurePlayer(newGroup, getStructurePlayer(parentGroup));
+  setStructureModuleCount(newGroup, nextCount);
+  setStructureRotationDegrees(newGroup, rotDeg);
+  if (replaceStructureGroup(parentGroup, newGroup)) {
+    pushUndo({ type: 'structure-replace', oldGroup: parentGroup, newGroup });
+    setFileStatus('Added ' + (moduleDef.name || 'module') + ' to ' + (parentDef.name || parentDef.id) + ' (' + nextCount + ' module' + (nextCount === 1 ? '' : 's') + ').');
+    return newGroup;
+  }
+  return null;
+}
+
 function handleEditClick(event) {
   if (activeTab !== 'textures' && activeTab !== 'height' && activeTab !== 'objects' && activeTab !== 'droids') return;
   if (event.button !== undefined && event.button !== 0) return;
@@ -3405,13 +3531,26 @@ function handleEditClick(event) {
       updateHighlight(event);
       return;
     }
-    let minH = Infinity;
-    for (let dy = 0; dy < sizeY; dy++) {
-      for (let dx = 0; dx < sizeX; dx++) {
-        const h = mapHeights[tileY + dy][tileX + dx] * HEIGHT_SCALE;
-        if (h < minH) minH = h;
+    const moduleRule = getModuleParentTypes(def);
+    if (moduleRule) {
+      const parentGroup = placement.parentGroup || findModuleParentForPlacement(def, { x: tileX, y: tileY, sizeX, sizeY });
+      if (!parentGroup) {
+        setFileStatus('Cannot place structure: Module must be placed on a matching structure.');
+        updateHighlight(event);
+        return;
       }
+      applyStructureModulePlacement(def, parentGroup, tileX, tileY, sizeX, sizeY)
+        .then(() => {
+          lastMouseEvent = event;
+          updateHighlight(event);
+        })
+        .catch(err => {
+          console.error('Failed to place structure module:', err);
+          setFileStatus('Failed to place module.');
+        });
+      return;
     }
+    const minH = getMinTerrainHeight(tileX, tileY, sizeX, sizeY);
     buildStructureGroup(def, selectedStructureRotation, sizeX, sizeY).then(group => {
       const pos = getStructurePlacementPosition(group, tileX, tileY, sizeX, sizeY, minH);
       group.position.copy(pos);
@@ -4182,10 +4321,12 @@ function parseStructIni(text) {
 }
 
 async function addLoadedStructure(def, entry, rot, rotDeg, tileX, tileY, sizeX, sizeY, minH) {
-  const group = await buildStructureGroup(def, rot, sizeX, sizeY);
+  const moduleCount = Math.max(0, parseInt(entry?.modules, 10) || 0);
+  const group = await buildStructureGroup(getStructureRenderDef(def, moduleCount), rot, sizeX, sizeY);
   const pos = getStructurePlacementPosition(group, tileX, tileY, sizeX, sizeY, minH);
   group.position.copy(pos);
   markStructureForExport(group, def, rot, sizeX, sizeY, entry, currentStructJsonStyle);
+  setStructureModuleCount(group, moduleCount);
   setStructureRotationDegrees(group, rotDeg);
   objectsGroup.add(group);
   return group;
@@ -4231,17 +4372,6 @@ async function loadStructuresFromZip(zip) {
         }
       }
       return addLoadedStructure(def, entry, rot, rotDeg, tileX, tileY, sizeX, sizeY, minH)
-        .then(() => {
-          const moduleCount = Math.max(0, parseInt(entry.modules, 10) || 0);
-          const moduleDef = getModuleDefForParent(def);
-          if (!moduleDef || !moduleCount) return Promise.resolve();
-          const moduleEntryBase = { ...entry, name: moduleDef.id };
-          const modulePromises = [];
-          for (let i = 0; i < moduleCount; i++) {
-            modulePromises.push(addLoadedStructure(moduleDef, { ...moduleEntryBase, id: String(entry.id || '') + '_module_' + (i + 1) }, rot, rotDeg, tileX, tileY, sizeX, sizeY, minH));
-          }
-          return Promise.all(modulePromises);
-        })
         .catch(() => {});
     });
     await Promise.all(promises);
@@ -5152,13 +5282,20 @@ function updateHighlight(event) {
     sizeY = tmpXY;
   }
   const placement = getStructurePlacementValidity(def, tileX, tileY, sizeX, sizeY);
+  let previewDef = def;
+  const moduleRule = getModuleParentTypes(def);
+  if (moduleRule && placement.parentGroup) {
+    const parentDef = getStructureGroupDef(placement.parentGroup);
+    previewDef = getStructureRenderDef(parentDef, getStructureModuleCount(placement.parentGroup) + 1);
+  }
   const previewKey = [
-    def.id,
+    previewDef.id,
     selectedStructureRotation,
     tileX,
     tileY,
     sizeX,
     sizeY,
+    getStructureModuleCount(placement.parentGroup),
     placement.valid ? 'ok' : 'blocked'
   ].join('|');
   if (previewKey === highlightCachedKey && previewGroup && highlightModelGroup) return;
@@ -5220,7 +5357,7 @@ function updateHighlight(event) {
   highlightLoadingKey = previewKey;
   const thisToken = ++highlightLoadToken;
   // Build unified preview using the same function as final placement
-  buildStructureGroup(def, selectedStructureRotation, sizeX, sizeY, null, 0.55)
+  buildStructureGroup(previewDef, selectedStructureRotation, sizeX, sizeY, null, 0.55)
     .then(group => {
       if (thisToken !== highlightLoadToken) return; // stale
       // Use the same placement logic as for final structures to keep
@@ -5235,7 +5372,7 @@ function updateHighlight(event) {
       group.traverse(obj => obj.layers.set(1));
       scene.add(group);
       highlightModelGroup = group;
-      highlightCachedId = def.id;
+      highlightCachedId = previewDef.id;
       highlightCachedRot = selectedStructureRotation;
       highlightCachedKey = previewKey;
       highlightLoadingKey = null;
