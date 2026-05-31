@@ -386,20 +386,7 @@ function describeDroidGroup(group) {
 function updateViewSelectionInfo(event) {
   const info = document.getElementById('viewSelectionInfo');
   if (!info) return;
-  const droid = pickDroidFromEvent(event);
-  if (droid) {
-    setActiveTab('droids');
-    setDroidMode('view');
-    selectDroidGroup(droid);
-    return;
-  }
-  const structure = pickStructureFromEvent(event);
-  if (structure) {
-    setActiveTab('objects');
-    setStructureMode('view');
-    selectStructureGroup(structure);
-    return;
-  }
+  if (routeMapObjectSelection(event)) return;
   const rect = threeContainer.getBoundingClientRect();
   mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -426,6 +413,24 @@ function updateViewSelectionInfo(event) {
     'Height: ' + mapHeights[tileY][tileX],
     'Rotation: ' + ((mapRotations[tileY][tileX] || 0) * 90) + ' deg'
   ].join('\n');
+}
+
+function routeMapObjectSelection(event) {
+  const droid = pickDroidFromEvent(event);
+  if (droid) {
+    setActiveTab('droids');
+    setDroidMode('view');
+    selectDroidGroup(droid);
+    return true;
+  }
+  const structure = pickStructureFromEvent(event);
+  if (structure) {
+    setActiveTab('objects');
+    setStructureMode('view');
+    selectStructureGroup(structure);
+    return true;
+  }
+  return false;
 }
 
 function updateDroidModeUI() {
@@ -3550,6 +3555,7 @@ async function handleEditClick(event) {
     return;
   }
   if (activeTab === 'objects' && structureMode !== 'build') {
+    if (structureMode === 'view' && routeMapObjectSelection(event)) return;
     const group = pickStructureFromEvent(event);
     if (structureMode === 'view') {
       selectStructureGroup(group);
@@ -3563,6 +3569,7 @@ async function handleEditClick(event) {
     return;
   }
   if (activeTab === 'droids' && droidMode !== 'build') {
+    if (droidMode === 'view' && routeMapObjectSelection(event)) return;
     const group = pickDroidFromEvent(event);
     if (droidMode === 'view') {
       selectDroidGroup(group);
