@@ -3376,6 +3376,14 @@ function handleMapContextMenu(event) {
   event.stopPropagation();
 }
 
+function isMapRightClickEditMode() {
+  if (rightClickAction === 'browser') return false;
+  return (activeTab === 'textures' && tileBrushMode) ||
+    (activeTab === 'height' && heightBrushMode) ||
+    (activeTab === 'objects' && structureMode !== 'view') ||
+    (activeTab === 'droids' && droidMode !== 'view');
+}
+
 async function placeDroidAtTile(tileX, tileY) {
   await loadComponentDefs();
   const playerSelect = document.getElementById('droidPlayerSelect');
@@ -4858,8 +4866,7 @@ function drawMap3D() {
       resetCameraTarget(mapW, mapH, threeContainer);
     });
     threeContainer.addEventListener('mousedown', e => {
-      if (e.button !== 0) return;
-      if (activeTab === 'textures' && (tileBrushMode || tileSelectionMode)) return;
+      if (e.button !== 2 || isMapRightClickEditMode()) return;
       isDragging = true;
       lastX = e.clientX;
       lastY = e.clientY;
