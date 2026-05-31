@@ -64,8 +64,8 @@ export function parsePie(data) {
   const positions = [];
   const uvs = [];
   const normalizeUv = (value, size) => {
-    if (size) return value / size;
     if (Math.abs(value) <= 1) return value;
+    if (size) return value / size;
     return value / 256;
   };
   triIndices.forEach((face, idx) => {
