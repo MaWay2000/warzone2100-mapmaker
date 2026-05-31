@@ -8,11 +8,15 @@ export function parsePie(data) {
   const triUVs = [];
   const connectors = [];
   let textureName = null;
+  let typeFlags = 0;
   let texWidth = null;
   let texHeight = null;
   while (i < lines.length) {
     const line = lines[i].trim();
-    if (line.startsWith('TEXTURE')) {
+    if (line.startsWith('TYPE')) {
+      const parts = line.split(/\s+/);
+      typeFlags = parseInt(parts[1], 16) || 0;
+    } else if (line.startsWith('TEXTURE')) {
       const parts = line.split(/\s+/);
       textureName = parts[2] || null;
       if (parts.length >= 5) {
@@ -86,6 +90,7 @@ export function parsePie(data) {
     if (textureName) geo.userData.textureName = textureName;
   }
   geo.userData.connectors = connectors;
+  geo.userData.teamColorMask = !!(typeFlags & 0x10000);
   geo.computeVertexNormals();
   return geo;
 }

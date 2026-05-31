@@ -23,7 +23,7 @@ function getTeamMaskPath(textureName) {
   return match && TEAM_MASK_PAGES.has(match[1]) ? match[1] + '_tcmask.png' : null;
 }
 
-function createPieMaterial(textureName, opacityOverride) {
+function createPieMaterial(textureName, opacityOverride, teamColorEnabled = false) {
   const transparent = opacityOverride !== null;
   const opacity = transparent ? opacityOverride : 1;
   if (!textureName) return new THREE.MeshLambertMaterial({ color: 0x8888ff, transparent, opacity });
@@ -33,19 +33,23 @@ function createPieMaterial(textureName, opacityOverride) {
   tex.magFilter = THREE.NearestFilter;
   tex.minFilter = THREE.LinearMipMapLinearFilter;
   const material = new THREE.MeshLambertMaterial({ map: tex, transparent, opacity });
+  if (!teamColorEnabled) return material;
   const maskName = getTeamMaskPath(texName);
-  if (!maskName) return material;
-  const mask = loader.load(((typeof window!=='undefined'&&window.TEX_BASE)?window.TEX_BASE:TEX_BASE) + maskName, undefined, undefined, () => {});
-  mask.magFilter = THREE.NearestFilter;
-  mask.minFilter = THREE.LinearMipMapLinearFilter;
+  const mask = maskName
+    ? loader.load(((typeof window!=='undefined'&&window.TEX_BASE)?window.TEX_BASE:TEX_BASE) + maskName, undefined, undefined, () => {})
+    : null;
+  if (mask) {
+    mask.magFilter = THREE.NearestFilter;
+    mask.minFilter = THREE.LinearMipMapLinearFilter;
+  }
   material.userData.teamColor = new THREE.Color(PLAYER_COLORS[0]);
   material.userData.teamColorMask = mask;
   material.onBeforeCompile = shader => {
     shader.uniforms.teamColor = { value: material.userData.teamColor };
-    shader.uniforms.teamColorMask = { value: mask };
+    if (mask) shader.uniforms.teamColorMask = { value: mask };
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <map_pars_fragment>', '#include <map_pars_fragment>\nuniform sampler2D teamColorMask;\nuniform vec3 teamColor;')
-      .replace('#include <map_fragment>', '#include <map_fragment>\n#ifdef USE_MAP\n  float teamMask = texture2D(teamColorMask, vUv).r;\n  diffuseColor.rgb += (teamColor - vec3(0.5)) * teamMask;\n#endif');
+      .replace('#include <map_pars_fragment>', '#include <map_pars_fragment>\nuniform vec3 teamColor;' + (mask ? '\nuniform sampler2D teamColorMask;' : ''))
+      .replace('#include <map_fragment>', '#include <map_fragment>\n#ifdef USE_MAP\n  vec3 teamDiffuse = texture2D(map, vUv).rgb;\n  float blueMarker = smoothstep(0.08, 0.45, teamDiffuse.b - max(teamDiffuse.r, teamDiffuse.g));\n  float teamMask = ' + (mask ? 'max(texture2D(teamColorMask, vUv).r, blueMarker)' : 'blueMarker') + ';\n  diffuseColor.rgb += (teamColor - vec3(0.5)) * teamMask;\n#endif');
   };
   return material;
 }
@@ -85,7 +89,7 @@ export async function buildStructureGroup(def, rotation, sizeX, sizeY, scaleOver
       minYVal = bb2.min.y;
       let baseMat;
       if (baseGeo.userData && baseGeo.userData.textureName) {
-        baseMat = createPieMaterial(baseGeo.userData.textureName, opacityOverride);
+        baseMat = createPieMaterial(baseGeo.userData.textureName, opacityOverride, baseGeo.userData.teamColorMask);
       } else {
         baseMat = new THREE.MeshLambertMaterial({ color: 0x8888ff, transparent: opacityOverride !== null, opacity: opacityOverride !== null ? opacityOverride : 1 });
       }
@@ -107,7 +111,7 @@ export async function buildStructureGroup(def, rotation, sizeX, sizeY, scaleOver
           const ecZ = (tb.min.z + tb.max.z) / 2;
           let extraMat;
           if (extraGeo.userData && extraGeo.userData.textureName) {
-            extraMat = createPieMaterial(extraGeo.userData.textureName, opacityOverride);
+            extraMat = createPieMaterial(extraGeo.userData.textureName, opacityOverride, extraGeo.userData.teamColorMask);
           } else {
             extraMat = new THREE.MeshLambertMaterial({ color: 0x8888ff, transparent: opacityOverride !== null, opacity: opacityOverride !== null ? opacityOverride : 1 });
           }
@@ -179,7 +183,7 @@ export async function buildStructureGroup(def, rotation, sizeX, sizeY, scaleOver
       const tb = attGeo.boundingBox;
       let tMat;
       if (attGeo.userData && attGeo.userData.textureName) {
-        tMat = createPieMaterial(attGeo.userData.textureName, opacityOverride);
+        tMat = createPieMaterial(attGeo.userData.textureName, opacityOverride, attGeo.userData.teamColorMask);
       } else {
         tMat = new THREE.MeshLambertMaterial({ color: 0xff0000, transparent: opacityOverride !== null, opacity: opacityOverride !== null ? opacityOverride : 1 });
       }
