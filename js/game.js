@@ -289,7 +289,7 @@ function clearStructurePlacementPreview() {
 function getStructureRootFromObject(obj) {
   let cur = obj;
   while (cur && cur !== objectsGroup) {
-    if (cur.parent === objectsGroup) return cur;
+    if (cur.parent === objectsGroup && cur.userData?.structureExport) return cur;
     cur = cur.parent;
   }
   return null;
@@ -367,15 +367,55 @@ function updateDroidInfo(group, fallback = 'No droid selected.') {
     info.textContent = fallback;
     return;
   }
+  info.textContent = describeDroidGroup(group);
+}
+
+function describeDroidGroup(group) {
   const entry = group.userData.droidExport;
   const tile = getObjectEntryTile(entry);
-  info.textContent = [
+  return [
     'Selected droid',
     'Name: ' + (entry.name || entry.template || 'Builder Truck'),
     'Template: ' + (entry.template || 'custom'),
     'Player: ' + getDroidPlayer(group),
     tile ? ('Tile: ' + tile.x + ', ' + tile.y) : 'Tile: unknown',
     'Rotation: ' + Math.round(getDroidRotationDegrees(group)) + ' deg'
+  ].join('\n');
+}
+
+function updateViewSelectionInfo(event) {
+  const info = document.getElementById('viewSelectionInfo');
+  if (!info) return;
+  const droid = pickDroidFromEvent(event);
+  if (droid) {
+    info.textContent = describeDroidGroup(droid);
+    return;
+  }
+  const structure = pickStructureFromEvent(event);
+  if (structure) {
+    info.textContent = describeStructureGroup(structure);
+    return;
+  }
+  const rect = threeContainer.getBoundingClientRect();
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const hit = raycaster.intersectObjects(scene.children, true)[0];
+  const tileX = hit ? Math.floor(hit.point.x) : -1;
+  const tileY = hit ? Math.floor(hit.point.z) : -1;
+  if (tileX < 0 || tileY < 0 || tileX >= mapW || tileY >= mapH) {
+    info.textContent = 'No map object selected.';
+    return;
+  }
+  const tileId = mapTiles[tileY][tileX];
+  const tileType = tileTypesById[tileId] ?? 0;
+  info.textContent = [
+    'Selected map tile',
+    'Tile: ' + tileX + ', ' + tileY,
+    'Texture: ' + tileId,
+    'Type: ' + (TILE_TYPE_NAMES[tileType] || tileType),
+    'Height: ' + mapHeights[tileY][tileX],
+    'Rotation: ' + ((mapRotations[tileY][tileX] || 0) * 90) + ' deg'
   ].join('\n');
 }
 
@@ -3485,8 +3525,9 @@ async function removeTopStructureModule(parentGroup) {
 }
 
 async function handleEditClick(event) {
-  if (activeTab !== 'textures' && activeTab !== 'height' && activeTab !== 'objects' && activeTab !== 'droids') return;
+  if (activeTab !== 'view' && activeTab !== 'textures' && activeTab !== 'height' && activeTab !== 'objects' && activeTab !== 'droids') return;
   const isSelectionAction =
+    activeTab === 'view' ||
     (activeTab === 'textures' && tileSelectionMode) ||
     (activeTab === 'height' && heightSelectionMode) ||
     (activeTab === 'objects' && structureMode === 'view') ||
@@ -3494,6 +3535,10 @@ async function handleEditClick(event) {
   if (event.button !== undefined) {
     if (isSelectionAction && event.button !== 0) return;
     if (!isSelectionAction && (event.button !== 2 || rightClickAction === 'browser')) return;
+  }
+  if (activeTab === 'view') {
+    updateViewSelectionInfo(event);
+    return;
   }
   if (activeTab === 'objects' && structureMode !== 'build') {
     const group = pickStructureFromEvent(event);
