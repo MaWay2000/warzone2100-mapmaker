@@ -33,7 +33,8 @@ function createPieMaterial(textureName, opacityOverride, teamColorEnabled = fals
   tex.magFilter = THREE.NearestFilter;
   tex.minFilter = THREE.LinearMipMapLinearFilter;
   const material = new THREE.MeshLambertMaterial({ map: tex, transparent, opacity });
-  if (!teamColorEnabled) return material;
+  const classicTeamColor = texName === 'page-12-player-buildings.png' || texName === 'page-13-player-buildings.png';
+  if (!teamColorEnabled && !classicTeamColor) return material;
   const maskName = getTeamMaskPath(texName);
   const mask = maskName
     ? loader.load(((typeof window!=='undefined'&&window.TEX_BASE)?window.TEX_BASE:TEX_BASE) + maskName, undefined, undefined, () => {})

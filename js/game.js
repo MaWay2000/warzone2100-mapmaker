@@ -15,7 +15,7 @@ import { loadMapUnified, getTilesetIndexFromTtp } from './maploader.js';
 import { convertGammaGameMapToClassic, parseTTypes } from './convert.js';
 import { cameraState, resetCameraTarget, setupKeyboard } from './camera.js';
 import { parsePie, loadPieGeometry } from "./pie.js";
-import { buildStructureGroup, setStructureGroupPlayerColor } from "./structureGroup.js";
+import { buildStructureGroup, setStructureGroupPlayerColor } from "./structureGroup.js?v=structure-team-colors";
 import { STRUCTURE_TURRETS } from "./structure_turrets.js";
 import { loadSensorDefs, getSensorModels } from "./sensors.js";
 import { buildDroidGroup } from "./droidGroup.js";
@@ -5415,7 +5415,7 @@ function updateHighlight(event) {
   planeGeo.rotateX(-Math.PI / 2);
   const planeMat = new THREE.MeshBasicMaterial({ color: placement.valid ? 0x00ff00 : 0xff3333, transparent: true, opacity: 0.45, side: THREE.DoubleSide });
   const planeMesh = new THREE.Mesh(planeGeo, planeMat);
-  planeMesh.position.set(tileX + sizeX / 2, maxH2 + 0.02, tileY + sizeY / 2);
+  planeMesh.position.set(tileX + sizeX / 2, maxH2 + (moduleRule ? 0.08 : 0.02), tileY + sizeY / 2);
   highlightMesh = planeMesh;
   previewGroup.add(planeMesh);
   previewGroup.traverse(obj => obj.layers.set(1));
