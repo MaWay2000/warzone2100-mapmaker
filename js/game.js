@@ -15,7 +15,7 @@ import { loadMapUnified, getTilesetIndexFromTtp } from './maploader.js';
 import { convertGammaGameMapToClassic, parseTTypes } from './convert.js';
 import { cameraState, resetCameraTarget, setupKeyboard } from './camera.js';
 import { parsePie, loadPieGeometry } from "./pie.js";
-import { buildStructureGroup } from "./structureGroup.js";
+import { buildStructureGroup, setStructureGroupPlayerColor } from "./structureGroup.js";
 import { STRUCTURE_TURRETS } from "./structure_turrets.js";
 import { loadSensorDefs, getSensorModels } from "./sensors.js";
 import { buildDroidGroup } from "./droidGroup.js";
@@ -758,6 +758,7 @@ function setStructurePlayer(group, player) {
     if (data.sourceEntry.player !== undefined) data.sourceEntry.player = nextPlayer;
     else data.sourceEntry.startpos = nextPlayer;
   }
+  setStructureGroupPlayerColor(group, nextPlayer);
   updateStructureInfo(group);
 }
 
@@ -2091,6 +2092,7 @@ function markStructureForExport(group, def, rot, sizeX, sizeY, sourceEntry = nul
     sourceEntry,
     style
   };
+  setStructureGroupPlayerColor(group, group.userData.structureExport.player);
 }
 
 function getStructureExportEntry(group, style, id) {

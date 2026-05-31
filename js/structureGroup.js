@@ -12,6 +12,52 @@ function normalizeTexPath(name) {
   return n;
 }
 
+const PLAYER_COLORS = [
+  0xff0000, 0x0000ff, 0x00ff00, 0xffff00, 0xff00ff,
+  0x00ffff, 0xffffff, 0x888888, 0xff8800, 0x0088ff
+];
+const TEAM_MASK_PAGES = new Set(['page-10', 'page-11', 'page-12', 'page-13', 'page-14', 'page-15', 'page-16', 'page-17']);
+
+function getTeamMaskPath(textureName) {
+  const match = normalizeTexPath(textureName).match(/^(page-\d+)(?:-[^/]*)?\.png$/);
+  return match && TEAM_MASK_PAGES.has(match[1]) ? match[1] + '_tcmask.png' : null;
+}
+
+function createPieMaterial(textureName, opacityOverride) {
+  const transparent = opacityOverride !== null;
+  const opacity = transparent ? opacityOverride : 1;
+  if (!textureName) return new THREE.MeshLambertMaterial({ color: 0x8888ff, transparent, opacity });
+  const loader = new THREE.TextureLoader();
+  const texName = normalizeTexPath(textureName);
+  const tex = loader.load(((typeof window!=='undefined'&&window.TEX_BASE)?window.TEX_BASE:TEX_BASE) + texName, undefined, undefined, () => {});
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.LinearMipMapLinearFilter;
+  const material = new THREE.MeshLambertMaterial({ map: tex, transparent, opacity });
+  const maskName = getTeamMaskPath(texName);
+  if (!maskName) return material;
+  const mask = loader.load(((typeof window!=='undefined'&&window.TEX_BASE)?window.TEX_BASE:TEX_BASE) + maskName, undefined, undefined, () => {});
+  mask.magFilter = THREE.NearestFilter;
+  mask.minFilter = THREE.LinearMipMapLinearFilter;
+  material.userData.teamColor = new THREE.Color(PLAYER_COLORS[0]);
+  material.userData.teamColorMask = mask;
+  material.onBeforeCompile = shader => {
+    shader.uniforms.teamColor = { value: material.userData.teamColor };
+    shader.uniforms.teamColorMask = { value: mask };
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <map_pars_fragment>', '#include <map_pars_fragment>\nuniform sampler2D teamColorMask;\nuniform vec3 teamColor;')
+      .replace('#include <map_fragment>', '#include <map_fragment>\n#ifdef USE_MAP\n  float teamMask = texture2D(teamColorMask, vUv).r;\n  diffuseColor.rgb += (teamColor - vec3(0.5)) * teamMask;\n#endif');
+  };
+  return material;
+}
+
+export function setStructureGroupPlayerColor(group, player) {
+  const color = new THREE.Color(PLAYER_COLORS[Math.max(0, Math.min(9, parseInt(player, 10) || 0))]);
+  group?.traverse(child => {
+    if (!child.isMesh || !child.material?.userData?.teamColor) return;
+    child.material.userData.teamColor.copy(color);
+  });
+}
+
 export async function buildStructureGroup(def, rotation, sizeX, sizeY, scaleOverride = null, opacityOverride = null) {
   const baseW = sizeX || 1;
   const baseD = sizeY || 1;
@@ -39,12 +85,7 @@ export async function buildStructureGroup(def, rotation, sizeX, sizeY, scaleOver
       minYVal = bb2.min.y;
       let baseMat;
       if (baseGeo.userData && baseGeo.userData.textureName) {
-        const texLoader = new THREE.TextureLoader();
-        const texName = normalizeTexPath(baseGeo.userData.textureName);
-        const tex = texLoader.load(((typeof window!=='undefined'&&window.TEX_BASE)?window.TEX_BASE:TEX_BASE) + texName, undefined, undefined, () => {});
-        tex.magFilter = THREE.NearestFilter;
-        tex.minFilter = THREE.LinearMipMapLinearFilter;
-        baseMat = new THREE.MeshLambertMaterial({ map: tex, transparent: opacityOverride !== null, opacity: opacityOverride !== null ? opacityOverride : 1 });
+        baseMat = createPieMaterial(baseGeo.userData.textureName, opacityOverride);
       } else {
         baseMat = new THREE.MeshLambertMaterial({ color: 0x8888ff, transparent: opacityOverride !== null, opacity: opacityOverride !== null ? opacityOverride : 1 });
       }
@@ -66,12 +107,7 @@ export async function buildStructureGroup(def, rotation, sizeX, sizeY, scaleOver
           const ecZ = (tb.min.z + tb.max.z) / 2;
           let extraMat;
           if (extraGeo.userData && extraGeo.userData.textureName) {
-            const tl = new THREE.TextureLoader();
-            const tn = normalizeTexPath(extraGeo.userData.textureName);
-            const tex2 = tl.load(((typeof window!=='undefined'&&window.TEX_BASE)?window.TEX_BASE:TEX_BASE) + tn, undefined, undefined, () => {});
-            tex2.magFilter = THREE.NearestFilter;
-            tex2.minFilter = THREE.LinearMipMapLinearFilter;
-            extraMat = new THREE.MeshLambertMaterial({ map: tex2, transparent: opacityOverride !== null, opacity: opacityOverride !== null ? opacityOverride : 1 });
+            extraMat = createPieMaterial(extraGeo.userData.textureName, opacityOverride);
           } else {
             extraMat = new THREE.MeshLambertMaterial({ color: 0x8888ff, transparent: opacityOverride !== null, opacity: opacityOverride !== null ? opacityOverride : 1 });
           }
@@ -143,12 +179,7 @@ export async function buildStructureGroup(def, rotation, sizeX, sizeY, scaleOver
       const tb = attGeo.boundingBox;
       let tMat;
       if (attGeo.userData && attGeo.userData.textureName) {
-        const tl = new THREE.TextureLoader();
-        const tn = normalizeTexPath(attGeo.userData.textureName);
-        const tex = tl.load(((typeof window!=='undefined'&&window.TEX_BASE)?window.TEX_BASE:TEX_BASE) + tn, undefined, undefined, () => {});
-        tex.magFilter = THREE.NearestFilter;
-        tex.minFilter = THREE.LinearMipMapLinearFilter;
-        tMat = new THREE.MeshLambertMaterial({ map: tex, transparent: opacityOverride !== null, opacity: opacityOverride !== null ? opacityOverride : 1 });
+        tMat = createPieMaterial(attGeo.userData.textureName, opacityOverride);
       } else {
         tMat = new THREE.MeshLambertMaterial({ color: 0xff0000, transparent: opacityOverride !== null, opacity: opacityOverride !== null ? opacityOverride : 1 });
       }
