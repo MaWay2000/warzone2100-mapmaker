@@ -389,8 +389,8 @@ function updateDroidModeUI() {
   if (buildControls) buildControls.style.display = droidMode === 'build' ? 'block' : 'none';
   if (deleteBtn) deleteBtn.style.display = droidMode === 'view' && selectedDroidGroup ? 'block' : 'none';
   if (hint) {
-    if (droidMode === 'build') hint.textContent = 'Click the map to place a builder truck.';
-    else if (droidMode === 'delete') hint.textContent = 'Hover a droid and click mouse1 to remove it.';
+    if (droidMode === 'build') hint.textContent = 'Right click the map to place a builder truck.';
+    else if (droidMode === 'delete') hint.textContent = 'Hover a droid and click mouse2 to remove it.';
     else hint.textContent = 'Click a droid on the map to view it.';
   }
   if (droidMode !== 'view') clearSelectedDroid();
@@ -1058,8 +1058,8 @@ function updateStructureModeUI() {
   if (info) info.style.display = structureMode === 'build' ? 'none' : 'block';
   if (hint) {
     hint.style.display = structureMode === 'view' ? 'none' : 'block';
-    if (structureMode === 'delete') hint.textContent = 'Hover a structure and click mouse1 to remove it from the map.';
-    else if (structureMode === 'build') hint.textContent = 'Click on the map to place the selected structure. Structures snap to the terrain and cannot overlap the map boundary.';
+    if (structureMode === 'delete') hint.textContent = 'Hover a structure and click mouse2 to remove it from the map.';
+    else if (structureMode === 'build') hint.textContent = 'Right click on the map to place the selected structure. Structures snap to the terrain and cannot overlap the map boundary.';
     else hint.textContent = '';
   }
   updateStructurePlayerControls(structureMode === 'view' ? selectedStructureGroup : null);
@@ -2690,7 +2690,7 @@ const initDom = () => {
   if (rightClickActionSelect) {
     rightClickAction = rightClickActionSelect.value || rightClickAction;
     rightClickActionSelect.addEventListener('change', () => {
-      rightClickAction = rightClickActionSelect.value || 'cancel';
+      rightClickAction = rightClickActionSelect.value || 'edit';
     });
   }
   if (undoBtn) undoBtn.addEventListener('click', undo);
@@ -3364,8 +3364,7 @@ const initDom = () => {
     updateDroidPreview();
   }
   if (threeContainer) {
-    // Use pointerdown so tile edits respond immediately on press and
-    // work reliably across mouse and touch interactions.
+    // Use pointerdown so map edits respond immediately on mouse2.
     threeContainer.addEventListener('pointerdown', handleEditClick);
     threeContainer.addEventListener('contextmenu', handleMapContextMenu);
   }
@@ -3375,9 +3374,6 @@ function handleMapContextMenu(event) {
   if (rightClickAction === 'browser') return;
   event.preventDefault();
   event.stopPropagation();
-  if (rightClickAction === 'cancel') {
-    cancelCurrentMapAction();
-  }
 }
 
 async function placeDroidAtTile(tileX, tileY) {
@@ -3482,7 +3478,15 @@ async function removeTopStructureModule(parentGroup) {
 
 async function handleEditClick(event) {
   if (activeTab !== 'textures' && activeTab !== 'height' && activeTab !== 'objects' && activeTab !== 'droids') return;
-  if (event.button !== undefined && event.button !== 0) return;
+  const isSelectionAction =
+    (activeTab === 'textures' && tileSelectionMode) ||
+    (activeTab === 'height' && heightSelectionMode) ||
+    (activeTab === 'objects' && structureMode === 'view') ||
+    (activeTab === 'droids' && droidMode === 'view');
+  if (event.button !== undefined) {
+    if (isSelectionAction && event.button !== 0) return;
+    if (!isSelectionAction && (event.button !== 2 || rightClickAction === 'browser')) return;
+  }
   if (activeTab === 'objects' && structureMode !== 'build') {
     const group = pickStructureFromEvent(event);
     if (structureMode === 'view') {
@@ -4221,7 +4225,7 @@ function colorizeTileTypeOptions() {
   let terrainSpeedModifiers = null;
 let tileTooltipDiv = null;
 let selectedTileType = 0;
-let rightClickAction = 'cancel';
+let rightClickAction = 'edit';
   function parseTileTypes(data) {
   if (!data || data.length < 12) return [];
   const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
