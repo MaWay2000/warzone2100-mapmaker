@@ -217,6 +217,7 @@ let selectedDroidBlinkTimer = null;
 let hoveredDroidGroup = null;
 let hoveredDroidHelper = null;
 let selectedStructureGroup = null;
+let selectedStructureLayer = 'structure';
 let selectedStructureBlinkHelper = null;
 let selectedStructureBlinkTimer = null;
 let hoveredStructureGroup = null;
@@ -665,6 +666,8 @@ function describeStructureGroup(group) {
   const data = group.userData?.structureExport || {};
   const structureId = data.name || data.id;
   const def = getStructureDefById(structureId) || {};
+  const moduleSelected = selectedStructureGroup === group && selectedStructureLayer === 'module';
+  const moduleDef = moduleSelected ? getModuleDefForParent(def) : null;
   const player = getStructurePlayer(group);
   const centerX = group.position.x + (group.userData.centerX || 0);
   const centerY = group.position.z + (group.userData.centerZ || 0);
@@ -672,11 +675,12 @@ function describeStructureGroup(group) {
   const tileY = Math.max(0, Math.min(mapH - 1, Math.round(centerY - 0.5)));
   const name = def.name || data.name || data.id || 'Unknown structure';
   const lines = [
-    'Selected structure',
-    'Name: ' + name,
-    'ID: ' + (structureId || def.id || 'unknown'),
+    moduleSelected ? 'Selected module' : 'Selected structure',
+    'Name: ' + (moduleDef?.name || name),
+    'ID: ' + (moduleDef?.id || structureId || def.id || 'unknown'),
     'Player: ' + player
   ];
+  if (moduleSelected) lines.push('Parent: ' + name);
   if (def.categoryName || def.category !== undefined) lines.push('Type: ' + (def.categoryName || STRUCTURE_CATEGORY_NAMES[def.category] || 'unknown'));
   lines.push('Tile: ' + tileX + ', ' + tileY);
   if (data.sizeX && data.sizeY) lines.push('Size: ' + data.sizeX + 'x' + data.sizeY);
@@ -766,7 +770,7 @@ function updateStructurePlayerControls(group) {
   const controls = document.getElementById('structurePlayerControls');
   const select = document.getElementById('structurePlayerSelect');
   if (!controls || !select) return;
-  const show = structureMode === 'view' && !!group;
+  const show = structureMode === 'view' && !!group && selectedStructureLayer !== 'module';
   controls.style.display = show ? 'flex' : 'none';
   if (!show) return;
   if (!select.options.length) {
@@ -784,7 +788,7 @@ function updateStructureRotationControls(group) {
   const controls = document.getElementById('structureRotationControls');
   const input = document.getElementById('structureRotationInput');
   if (!controls || !input) return;
-  const show = structureMode === 'view' && !!group;
+  const show = structureMode === 'view' && !!group && selectedStructureLayer !== 'module';
   controls.style.display = show ? 'flex' : 'none';
   if (!show) return;
   input.value = String(getStructureRotationDegrees(group));
@@ -794,10 +798,12 @@ function updateStructureViewDeleteButton(group) {
   const btn = document.getElementById('structureViewDeleteBtn');
   if (!btn) return;
   btn.style.display = structureMode === 'view' && !!group ? 'block' : 'none';
+  btn.textContent = selectedStructureLayer === 'module' ? 'Delete module' : 'Delete structure';
 }
 
 function clearSelectedStructure() {
   selectedStructureGroup = null;
+  selectedStructureLayer = 'structure';
   if (selectedStructureBlinkTimer) {
     clearInterval(selectedStructureBlinkTimer);
     selectedStructureBlinkTimer = null;
@@ -815,6 +821,7 @@ function selectStructureGroup(group) {
     return;
   }
   selectedStructureGroup = group;
+  selectedStructureLayer = getStructureModuleCount(group) > 0 ? 'module' : 'structure';
   selectedStructureBlinkHelper = new THREE.BoxHelper(group, 0x6cf527);
   selectedStructureBlinkHelper.layers.set(1);
   if (scene) scene.add(selectedStructureBlinkHelper);
@@ -3227,9 +3234,12 @@ const initDom = () => {
   }
   const structureViewDeleteBtn = document.getElementById('structureViewDeleteBtn');
   if (structureViewDeleteBtn) {
-    structureViewDeleteBtn.addEventListener('click', () => {
+    structureViewDeleteBtn.addEventListener('click', async () => {
       const group = selectedStructureGroup;
-      if (group && removeStructureGroup(group)) {
+      if (!group) return;
+      if (selectedStructureLayer === 'module') {
+        if (await removeTopStructureModule(group)) updateStructureInfo(null, 'No structure selected.');
+      } else if (removeStructureGroup(group)) {
         pushUndo({ type: 'structure-delete', group });
         updateStructureInfo(null, 'No structure selected.');
       }
@@ -3412,7 +3422,34 @@ async function applyStructureModulePlacement(moduleDef, parentGroup, tileX, tile
   return null;
 }
 
-function handleEditClick(event) {
+async function removeTopStructureModule(parentGroup) {
+  const parentDef = getStructureGroupDef(parentGroup);
+  const data = parentGroup?.userData?.structureExport || {};
+  const moduleCount = getStructureModuleCount(parentGroup);
+  if (!parentDef || moduleCount < 1) return false;
+  const footprint = getStructureFootprint(parentGroup);
+  if (!footprint) return false;
+  const nextCount = moduleCount - 1;
+  const rot = data.rot || 0;
+  const rotDeg = getStructureRotationDegrees(parentGroup);
+  const newGroup = await buildStructureGroup(getStructureRenderDef(parentDef, nextCount), rot, footprint.sizeX, footprint.sizeY);
+  const minH = getMinTerrainHeight(footprint.x, footprint.y, footprint.sizeX, footprint.sizeY);
+  newGroup.position.copy(getStructurePlacementPosition(newGroup, footprint.x, footprint.y, footprint.sizeX, footprint.sizeY, minH));
+  const sourceEntry = data.sourceEntry && typeof data.sourceEntry === 'object'
+    ? { ...data.sourceEntry, modules: nextCount }
+    : { modules: nextCount };
+  if (nextCount < 1) delete sourceEntry.modules;
+  markStructureForExport(newGroup, parentDef, rot, footprint.sizeX, footprint.sizeY, sourceEntry, data.style || currentStructJsonStyle);
+  setStructurePlayer(newGroup, getStructurePlayer(parentGroup));
+  setStructureModuleCount(newGroup, nextCount);
+  setStructureRotationDegrees(newGroup, rotDeg);
+  if (!replaceStructureGroup(parentGroup, newGroup)) return false;
+  pushUndo({ type: 'structure-replace', oldGroup: parentGroup, newGroup });
+  setFileStatus('Removed one module from ' + (parentDef.name || parentDef.id) + ' (' + nextCount + ' remaining).');
+  return true;
+}
+
+async function handleEditClick(event) {
   if (activeTab !== 'textures' && activeTab !== 'height' && activeTab !== 'objects' && activeTab !== 'droids') return;
   if (event.button !== undefined && event.button !== 0) return;
   if (activeTab === 'objects' && structureMode !== 'build') {
@@ -3420,7 +3457,9 @@ function handleEditClick(event) {
     if (structureMode === 'view') {
       selectStructureGroup(group);
     } else if (structureMode === 'delete' && group) {
-      if (removeStructureGroup(group)) {
+      if (getStructureModuleCount(group) > 0) {
+        await removeTopStructureModule(group);
+      } else if (removeStructureGroup(group)) {
         pushUndo({ type: 'structure-delete', group });
       }
     }
