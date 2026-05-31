@@ -49,7 +49,7 @@ function createPieMaterial(textureName, opacityOverride, teamColorEnabled = fals
     if (mask) shader.uniforms.teamColorMask = { value: mask };
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <map_pars_fragment>', '#include <map_pars_fragment>\nuniform vec3 teamColor;' + (mask ? '\nuniform sampler2D teamColorMask;' : ''))
-      .replace('#include <map_fragment>', '#include <map_fragment>\n#ifdef USE_MAP\n  vec3 teamDiffuse = texture2D(map, vUv).rgb;\n  float blueMarker = smoothstep(0.08, 0.45, teamDiffuse.b - max(teamDiffuse.r, teamDiffuse.g));\n  float teamMask = ' + (mask ? 'max(texture2D(teamColorMask, vUv).r, blueMarker)' : 'blueMarker') + ';\n  diffuseColor.rgb += (teamColor - vec3(0.5)) * teamMask;\n#endif');
+      .replace('#include <map_fragment>', '#include <map_fragment>\n#ifdef USE_MAP\n  vec3 teamDiffuse = texture2D(map, vUv).rgb;\n  float blueMarker = smoothstep(0.025, 0.25, teamDiffuse.b - max(teamDiffuse.r, teamDiffuse.g));\n  float teamMask = ' + (mask ? 'max(texture2D(teamColorMask, vUv).r, blueMarker)' : 'blueMarker') + ';\n  float visibleTeamMask = smoothstep(0.02, 0.6, teamMask);\n  diffuseColor.rgb = mix(diffuseColor.rgb, teamColor, visibleTeamMask * 0.55);\n#endif');
   };
   return material;
 }
