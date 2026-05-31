@@ -1343,7 +1343,6 @@ async function loadStructureDefs() {
           baseModel: entry.baseModel || null,
           moduleStageModels: moduleStageModels.length > 1 ? moduleStageModels : [],
           turretPieces,
-          preservePieScale: SENSOR_STRUCTURE_IDS.has(String(entry.id || '').toLowerCase()),
           alignPiesByOrigin: !!entry.baseModel,
           type: entry.type || '',
           strength: entry.strength || '',

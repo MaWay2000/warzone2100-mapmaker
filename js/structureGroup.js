@@ -28,7 +28,7 @@ export async function buildStructureGroup(def, rotation, sizeX, sizeY, scaleOver
       const bb = baseGeo.boundingBox;
       const width = bb.max.x - bb.min.x || 1;
       const depth = bb.max.z - bb.min.z || 1;
-      scl = scaleOverride !== null ? scaleOverride : (def.preservePieScale ? 1 : Math.min(baseW / width, baseD / depth));
+      scl = scaleOverride !== null ? scaleOverride : 1;
       if (!isFinite(scl) || scl <= 0) scl = 1;
       baseGeo.scale(scl, scl, scl);
       baseGeo.computeBoundingBox();
