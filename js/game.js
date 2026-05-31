@@ -699,6 +699,7 @@ function updateStructureInfo(group, fallback) {
   updateStructurePlayerControls(group);
   updateStructureRotationControls(group);
   updateStructureViewDeleteButton(group);
+  updateStructureViewAddModuleButton(group);
 }
 
 function normalizeDegrees(value) {
@@ -799,6 +800,16 @@ function updateStructureViewDeleteButton(group) {
   if (!btn) return;
   btn.style.display = structureMode === 'view' && !!group ? 'block' : 'none';
   btn.textContent = selectedStructureLayer === 'module' ? 'Delete module' : 'Delete structure';
+}
+
+function updateStructureViewAddModuleButton(group) {
+  const btn = document.getElementById('structureViewAddModuleBtn');
+  if (!btn) return;
+  const parentDef = getStructureGroupDef(group);
+  const moduleDef = getModuleDefForParent(parentDef);
+  const moduleRule = getModuleParentTypes(moduleDef);
+  const show = structureMode === 'view' && !!group && !!moduleRule && getStructureModuleCount(group) < moduleRule.max;
+  btn.style.display = show ? 'block' : 'none';
 }
 
 function clearSelectedStructure() {
@@ -1054,6 +1065,7 @@ function updateStructureModeUI() {
   updateStructurePlayerControls(structureMode === 'view' ? selectedStructureGroup : null);
   updateStructureRotationControls(structureMode === 'view' ? selectedStructureGroup : null);
   updateStructureViewDeleteButton(structureMode === 'view' ? selectedStructureGroup : null);
+  updateStructureViewAddModuleButton(structureMode === 'view' ? selectedStructureGroup : null);
   if (structureMode === 'build') {
     clearHoveredStructure();
     clearSelectedStructure();
@@ -3249,6 +3261,18 @@ const initDom = () => {
         pushUndo({ type: 'structure-delete', group });
         updateStructureInfo(null, 'No structure selected.');
       }
+    });
+  }
+  const structureViewAddModuleBtn = document.getElementById('structureViewAddModuleBtn');
+  if (structureViewAddModuleBtn) {
+    structureViewAddModuleBtn.addEventListener('click', async () => {
+      const group = selectedStructureGroup;
+      const parentDef = getStructureGroupDef(group);
+      const moduleDef = getModuleDefForParent(parentDef);
+      const footprint = getStructureFootprint(group);
+      if (!group || !moduleDef || !footprint) return;
+      const newGroup = await applyStructureModulePlacement(moduleDef, group, footprint.x, footprint.y, footprint.sizeX, footprint.sizeY);
+      if (newGroup) selectStructureGroup(newGroup);
     });
   }
   if (structureSelect) {
