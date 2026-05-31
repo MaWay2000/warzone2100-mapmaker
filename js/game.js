@@ -5376,7 +5376,7 @@ function updateHighlight(event) {
     getStructureModuleCount(placement.parentGroup),
     placement.valid ? 'ok' : 'blocked'
   ].join('|');
-  if (previewKey === highlightCachedKey && previewGroup && highlightModelGroup) return;
+  if (previewKey === highlightCachedKey && previewGroup && (moduleRule || highlightModelGroup)) return;
   if (previewKey === highlightLoadingKey && previewGroup) return;
   // Ground plane highlight (green)
   let maxH2 = 0;
@@ -5431,6 +5431,11 @@ function updateHighlight(event) {
       }
     });
     highlightModelGroup = null;
+  }
+  if (moduleRule) {
+    highlightCachedKey = previewKey;
+    highlightLoadingKey = null;
+    return;
   }
   highlightLoadingKey = previewKey;
   const thisToken = ++highlightLoadToken;
