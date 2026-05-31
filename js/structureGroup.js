@@ -100,7 +100,8 @@ export async function buildStructureGroup(def, rotation, sizeX, sizeY, scaleOver
       group.add(baseMesh);
 
       const alignExtrasByOrigin = !!def.alignPiesByOrigin;
-      for (const extra of def.pies.slice(1)) {
+      const extraPies = def.type === 'WALL' ? [] : def.pies.slice(1);
+      for (const extra of extraPies) {
         try {
           const extraGeo = await loadPieGeometry(extra).then(g => g.clone());
           extraGeo.scale(scl, scl, scl);
