@@ -16,7 +16,7 @@ const PLAYER_COLORS = [
   0xff0000, 0x0000ff, 0x00ff00, 0xffff00, 0xff00ff,
   0x00ffff, 0xffffff, 0x888888, 0xff8800, 0x0088ff
 ];
-const TEAM_MASK_PAGES = new Set(['page-10', 'page-11', 'page-13', 'page-14', 'page-15', 'page-16', 'page-17']);
+const TEAM_MASK_PAGES = new Set(['page-10', 'page-11', 'page-14', 'page-15', 'page-16', 'page-17']);
 
 function getTeamMaskPath(textureName) {
   const match = normalizeTexPath(textureName).match(/^(page-\d+)(?:-[^/]*)?\.png$/);
