@@ -44,7 +44,6 @@ function createPieMaterial(textureName, opacityOverride, teamColorEnabled = fals
   }
   material.userData.teamColor = new THREE.Color(PLAYER_COLORS[0]);
   material.userData.teamColorMask = mask;
-  material.customProgramCacheKey = () => mask ? 'structure-team-mask' : 'structure-team-blue-marker';
   material.onBeforeCompile = shader => {
     shader.uniforms.teamColor = { value: material.userData.teamColor };
     if (mask) shader.uniforms.teamColorMask = { value: mask };
