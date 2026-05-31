@@ -388,12 +388,16 @@ function updateViewSelectionInfo(event) {
   if (!info) return;
   const droid = pickDroidFromEvent(event);
   if (droid) {
-    info.textContent = describeDroidGroup(droid);
+    setActiveTab('droids');
+    setDroidMode('view');
+    selectDroidGroup(droid);
     return;
   }
   const structure = pickStructureFromEvent(event);
   if (structure) {
-    info.textContent = describeStructureGroup(structure);
+    setActiveTab('objects');
+    setStructureMode('view');
+    selectStructureGroup(structure);
     return;
   }
   const rect = threeContainer.getBoundingClientRect();
@@ -409,6 +413,11 @@ function updateViewSelectionInfo(event) {
   }
   const tileId = mapTiles[tileY][tileX];
   const tileType = tileTypesById[tileId] ?? 0;
+  selectedTileId = tileId;
+  selectedRotation = mapRotations[tileY][tileX] || 0;
+  setActiveTab('textures');
+  updateSelectedInfo();
+  renderTexturePalette();
   info.textContent = [
     'Selected map tile',
     'Tile: ' + tileX + ', ' + tileY,
