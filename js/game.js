@@ -863,13 +863,21 @@ function removeStructureGroup(group) {
   return true;
 }
 
+function addStructureGroup(group) {
+  if (!group || objectsGroup.children.includes(group)) return false;
+  setStructureGroupPlayerColor(group, getStructurePlayer(group));
+  objectsGroup.add(group);
+  if (!scene.children.includes(objectsGroup)) scene.add(objectsGroup);
+  return true;
+}
+
 function replaceStructureGroup(oldGroup, newGroup) {
   if (!oldGroup || !newGroup || !objectsGroup.children.includes(oldGroup)) return false;
   const index = objectsGroup.children.indexOf(oldGroup);
   if (selectedStructureGroup === oldGroup) clearSelectedStructure();
   if (hoveredStructureGroup === oldGroup) clearHoveredStructure();
   objectsGroup.remove(oldGroup);
-  objectsGroup.add(newGroup);
+  addStructureGroup(newGroup);
   const newIndex = objectsGroup.children.indexOf(newGroup);
   if (index >= 0 && newIndex >= 0 && index !== newIndex) {
     objectsGroup.children.splice(newIndex, 1);
@@ -1682,8 +1690,7 @@ function applyAction(action, mode) {
     if (mode === 'undo') {
       removeStructureGroup(action.group);
     } else {
-      objectsGroup.add(action.group);
-      if (!scene.children.includes(objectsGroup)) scene.add(objectsGroup);
+      addStructureGroup(action.group);
       drawMap3D();
     }
   } else if (action.type === 'structure-replace') {
@@ -1691,8 +1698,7 @@ function applyAction(action, mode) {
     else replaceStructureGroup(action.oldGroup, action.newGroup);
   } else if (action.type === 'structure-delete') {
     if (mode === 'undo') {
-      objectsGroup.add(action.group);
-      if (!scene.children.includes(objectsGroup)) scene.add(objectsGroup);
+      addStructureGroup(action.group);
       drawMap3D();
     } else {
       removeStructureGroup(action.group);
@@ -3600,8 +3606,7 @@ async function handleEditClick(event) {
       const pos = getStructurePlacementPosition(group, tileX, tileY, sizeX, sizeY, minH);
       group.position.copy(pos);
       markStructureForExport(group, def, selectedStructureRotation, sizeX, sizeY);
-      objectsGroup.add(group);
-      if (!scene.children.includes(objectsGroup)) scene.add(objectsGroup);
+      addStructureGroup(group);
       drawMap3D();
       pushUndo({ type: 'structure', group });
       lastMouseEvent = event;
@@ -4373,7 +4378,7 @@ async function addLoadedStructure(def, entry, rot, rotDeg, tileX, tileY, sizeX, 
   markStructureForExport(group, def, rot, sizeX, sizeY, entry, currentStructJsonStyle);
   setStructureModuleCount(group, moduleCount);
   setStructureRotationDegrees(group, rotDeg);
-  objectsGroup.add(group);
+  addStructureGroup(group);
   return group;
 }
 

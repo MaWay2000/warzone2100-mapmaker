@@ -59,6 +59,7 @@ export function setStructureGroupPlayerColor(group, player) {
   group?.traverse(child => {
     if (!child.isMesh || !child.material?.userData?.teamColor) return;
     child.material.userData.teamColor.copy(color);
+    child.material.needsUpdate = true;
   });
 }
 
