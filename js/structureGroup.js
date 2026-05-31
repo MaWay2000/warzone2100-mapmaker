@@ -33,7 +33,12 @@ function createPieMaterial(textureName, opacityOverride, teamColorEnabled = fals
   tex.magFilter = THREE.NearestFilter;
   tex.minFilter = THREE.LinearMipMapLinearFilter;
   const material = new THREE.MeshLambertMaterial({ map: tex, transparent, opacity });
-  const classicTeamColor = texName === 'page-12-player-buildings.png' || texName === 'page-13-player-buildings.png';
+  const classicFactoryTint = texName === 'page-13-player-buildings.png';
+  if (classicFactoryTint) {
+    material.userData.classicFactoryTint = true;
+    return material;
+  }
+  const classicTeamColor = texName === 'page-12-player-buildings.png';
   if (!teamColorEnabled && !classicTeamColor) return material;
   const maskName = getTeamMaskPath(texName);
   const mask = maskName
@@ -61,6 +66,10 @@ export function setStructureGroupPlayerColor(group, player) {
     if (!child.isMesh || !child.material?.userData?.teamColor) return;
     child.material.userData.teamColor.copy(color);
     child.material.needsUpdate = true;
+  });
+  group?.traverse(child => {
+    if (!child.isMesh || !child.material?.userData?.classicFactoryTint) return;
+    child.material.color.copy(color).lerp(new THREE.Color(0xffffff), 0.2);
   });
 }
 

@@ -15,7 +15,7 @@ import { loadMapUnified, getTilesetIndexFromTtp } from './maploader.js';
 import { convertGammaGameMapToClassic, parseTTypes } from './convert.js';
 import { cameraState, resetCameraTarget, setupKeyboard } from './camera.js';
 import { parsePie, loadPieGeometry } from "./pie.js";
-import { buildStructureGroup, setStructureGroupPlayerColor } from "./structureGroup.js?v=structure-team-colors";
+import { buildStructureGroup, setStructureGroupPlayerColor } from "./structureGroup.js?v=structure-team-colors-2";
 import { STRUCTURE_TURRETS } from "./structure_turrets.js";
 import { loadSensorDefs, getSensorModels } from "./sensors.js";
 import { buildDroidGroup } from "./droidGroup.js";
