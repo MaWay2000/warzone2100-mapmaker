@@ -771,7 +771,7 @@ function updateStructurePlayerControls(group) {
   const controls = document.getElementById('structurePlayerControls');
   const select = document.getElementById('structurePlayerSelect');
   if (!controls || !select) return;
-  const show = structureMode === 'view' && !!group && selectedStructureLayer !== 'module';
+  const show = structureMode === 'view' && !!group;
   controls.style.display = show ? 'flex' : 'none';
   if (!show) return;
   if (!select.options.length) {
@@ -3256,7 +3256,8 @@ const initDom = () => {
       const group = selectedStructureGroup;
       if (!group) return;
       if (selectedStructureLayer === 'module') {
-        if (await removeTopStructureModule(group)) updateStructureInfo(null, 'No structure selected.');
+        const newGroup = await removeTopStructureModule(group);
+        if (newGroup) selectStructureGroup(newGroup);
       } else if (removeStructureGroup(group)) {
         pushUndo({ type: 'structure-delete', group });
         updateStructureInfo(null, 'No structure selected.');
@@ -3456,9 +3457,9 @@ async function removeTopStructureModule(parentGroup) {
   const parentDef = getStructureGroupDef(parentGroup);
   const data = parentGroup?.userData?.structureExport || {};
   const moduleCount = getStructureModuleCount(parentGroup);
-  if (!parentDef || moduleCount < 1) return false;
+  if (!parentDef || moduleCount < 1) return null;
   const footprint = getStructureFootprint(parentGroup);
-  if (!footprint) return false;
+  if (!footprint) return null;
   const nextCount = moduleCount - 1;
   const rot = data.rot || 0;
   const rotDeg = getStructureRotationDegrees(parentGroup);
@@ -3473,10 +3474,10 @@ async function removeTopStructureModule(parentGroup) {
   setStructurePlayer(newGroup, getStructurePlayer(parentGroup));
   setStructureModuleCount(newGroup, nextCount);
   setStructureRotationDegrees(newGroup, rotDeg);
-  if (!replaceStructureGroup(parentGroup, newGroup)) return false;
+  if (!replaceStructureGroup(parentGroup, newGroup)) return null;
   pushUndo({ type: 'structure-replace', oldGroup: parentGroup, newGroup });
   setFileStatus('Removed one module from ' + (parentDef.name || parentDef.id) + ' (' + nextCount + ' remaining).');
-  return true;
+  return newGroup;
 }
 
 async function handleEditClick(event) {
