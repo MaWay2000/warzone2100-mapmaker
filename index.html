@@ -594,6 +594,10 @@
         <div id="droidPreview" style="width:100%; height:180px; background:#1a2735; border:1px solid #435066; border-radius:4px; margin:6px 0 4px;"></div>
       </div>
       <div id="droidInfo" style="margin:4px 0 0 0; font-size:0.85rem; color:#ccd; line-height:1.35; white-space:pre-line;">No droid selected.</div>
+      <div id="droidViewPlayerControls" style="display:none; align-items:center; gap:6px; margin-top:6px;">
+        <label for="droidViewPlayerSelect" style="margin:0; font-size:0.85rem;">Owner:</label>
+        <select id="droidViewPlayerSelect" style="flex:1; font-size:0.85rem;"></select>
+      </div>
       <button type="button" id="droidViewDeleteBtn" class="action-btn" style="display:none; margin-top:8px;">Delete droid</button>
       <p id="droidModeHint" style="margin:6px 0 0 0; font-size:0.75rem; color:#8aa;"></p>
     </div>
@@ -677,7 +681,7 @@
   </div>
 
   <script type="module" src="js/jszip.min.js"></script>
-  <script type="module" src="js/game.js?v=cross-tab-object-selection"></script>
+  <script type="module" src="js/game.js?v=droid-view-owner"></script>
 
 <script type="module">
     // Minimal UI bridge your game.js can use

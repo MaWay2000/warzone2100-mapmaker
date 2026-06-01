@@ -365,9 +365,29 @@ function updateDroidInfo(group, fallback = 'No droid selected.') {
   if (!info) return;
   if (!group?.userData?.droidExport) {
     info.textContent = fallback;
+    updateDroidViewPlayerControls(null);
     return;
   }
   info.textContent = describeDroidGroup(group);
+  updateDroidViewPlayerControls(group);
+}
+
+function updateDroidViewPlayerControls(group) {
+  const controls = document.getElementById('droidViewPlayerControls');
+  const select = document.getElementById('droidViewPlayerSelect');
+  if (!controls || !select) return;
+  const show = droidMode === 'view' && !!group;
+  controls.style.display = show ? 'flex' : 'none';
+  if (!show) return;
+  if (!select.options.length) {
+    for (let i = 0; i <= 10; i++) {
+      const opt = document.createElement('option');
+      opt.value = String(i);
+      opt.textContent = 'Player ' + i;
+      select.appendChild(opt);
+    }
+  }
+  select.value = String(getDroidPlayer(group));
 }
 
 function describeDroidGroup(group) {
@@ -439,9 +459,11 @@ function updateDroidModeUI() {
   });
   const buildControls = document.getElementById('droidBuildControls');
   const deleteBtn = document.getElementById('droidViewDeleteBtn');
+  const viewPlayerControls = document.getElementById('droidViewPlayerControls');
   const hint = document.getElementById('droidModeHint');
   if (buildControls) buildControls.style.display = droidMode === 'build' ? 'block' : 'none';
   if (deleteBtn) deleteBtn.style.display = droidMode === 'view' && selectedDroidGroup ? 'block' : 'none';
+  if (viewPlayerControls) updateDroidViewPlayerControls(droidMode === 'view' ? selectedDroidGroup : null);
   if (hint) {
     if (droidMode === 'build') hint.textContent = 'Right click the map to place a builder truck.';
     else if (droidMode === 'delete') hint.textContent = 'Hover a droid and click mouse2 to remove it.';
@@ -3254,6 +3276,12 @@ const initDom = () => {
   if (droidPlayerSelect) {
     droidPlayerSelect.addEventListener('change', () => {
       if (selectedDroidGroup) setDroidPlayer(selectedDroidGroup, droidPlayerSelect.value);
+    });
+  }
+  const droidViewPlayerSelect = document.getElementById('droidViewPlayerSelect');
+  if (droidViewPlayerSelect) {
+    droidViewPlayerSelect.addEventListener('change', () => {
+      if (selectedDroidGroup) setDroidPlayer(selectedDroidGroup, droidViewPlayerSelect.value);
     });
   }
   document.querySelectorAll('[data-droid-mode]').forEach(btn => {
